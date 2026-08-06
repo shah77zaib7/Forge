@@ -4,7 +4,9 @@ import { micro } from '@/design/motion'
 import { cn } from '@/lib/cn'
 
 const base =
-  'inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-full font-medium outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-tint/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-40'
+  // touch-pan-y: let the browser own vertical panning so framer's tap
+  // gesture never preventDefaults (and blocks) page scrolling on touch.
+  'inline-flex touch-pan-y select-none items-center justify-center gap-2 whitespace-nowrap rounded-full font-medium outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-tint/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-40'
 
 const variants = {
   /** The foreground tone — the single loud action on a screen. */

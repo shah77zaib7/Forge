@@ -196,7 +196,9 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
-    overscroll-behavior: none;
+    /* No overscroll-behavior on the root scroller: on some Android OEM
+       browsers it interferes with touch scrolling. Nested scroll areas
+       keep their own `overscroll-contain` to prevent chaining. */
   }
 
   ::selection {

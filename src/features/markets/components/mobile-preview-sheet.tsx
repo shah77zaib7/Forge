@@ -1,10 +1,12 @@
 import { AnimatePresence, motion, useDragControls } from 'framer-motion'
-import { ArrowUpRight, Orbit, X } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import type { PanInfo } from 'framer-motion'
+import { ArrowUpRight, ChevronLeft, ChevronRight, Orbit, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import { Button } from '@/components/ui/button'
 import { ease } from '@/design/motion'
+import { isBodyScrollLocked, lockBodyScroll } from '@/lib/scroll-lock'
 
 import type { Coin } from '../types'
 import { CoinPreview } from './coin-preview'
@@ -12,9 +14,17 @@ import { CoinPreview } from './coin-preview'
 /** Pull-to-dismiss thresholds — drag past either to close. */
 const CLOSE_OFFSET = 120
 const CLOSE_VELOCITY = 700
+/** Horizontal swipe thresholds — drag past either to switch coins. */
+const SWIPE_OFFSET = 72
+const SWIPE_VELOCITY = 500
 
 interface MobilePreviewSheetProps {
   coin: Coin
+  /** The ordered list the sheet swipes through (the current filter view). */
+  coins: Coin[]
+  /** Position of `coin` within `coins`. */
+  index: number
+  onSelect: (id: string) => void
   favorited: boolean
   onToggleFavorite: (id: string) => void
   onClose: () => void
@@ -23,10 +33,14 @@ interface MobilePreviewSheetProps {
 /**
  * The mobile "workspace" — a native-feeling bottom sheet that rises over
  * the list and fills ~92% of the viewport. Handles its own focus, Escape,
- * scroll lock and drag-to-dismiss from the handle.
+ * scroll lock, drag-to-dismiss from the handle, and horizontal swipes
+ * to move between coins in the current view.
  */
 export function MobilePreviewSheet({
   coin,
+  coins,
+  index,
+  onSelect,
   favorited,
   onToggleFavorite,
   onClose,
@@ -34,6 +48,8 @@ export function MobilePreviewSheet({
   const closeRef = useRef<HTMLButtonElement>(null)
   const sheetRef = useRef<HTMLDivElement>(null)
   const dragControls = useDragControls()
+  // Entrance direction for the next coin (1 = swiped left, next coin).
+  const [direction, setDirection] = useState<1 | -1 | 0>(0)
 
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null
@@ -66,16 +82,33 @@ export function MobilePreviewSheet({
         }
       }
     }
-    const previousOverflow = document.body.style.overflow
+
+    const unlock = lockBodyScroll()
     document.addEventListener('keydown', onKeyDown)
-    document.body.style.overflow = 'hidden'
 
     return () => {
       document.removeEventListener('keydown', onKeyDown)
-      document.body.style.overflow = previousOverflow
-      previouslyFocused?.focus()
+      unlock()
+      // Only hand focus back if this was the last open overlay — a
+      // newly opened sheet (opened during our exit) manages its own.
+      if (!isBodyScrollLocked()) previouslyFocused?.focus()
     }
   }, [onClose])
+
+  const goTo = (nextIndex: number) => {
+    if (nextIndex < 0 || nextIndex >= coins.length) return
+    onSelect(coins[nextIndex].id)
+  }
+
+  const onSwipeEnd = (_: unknown, info: PanInfo) => {
+    if (info.offset.x < -SWIPE_OFFSET || info.velocity.x < -SWIPE_VELOCITY) {
+      setDirection(1)
+      goTo(index + 1)
+    } else if (info.offset.x > SWIPE_OFFSET || info.velocity.x > SWIPE_VELOCITY) {
+      setDirection(-1)
+      goTo(index - 1)
+    }
+  }
 
   return createPortal(
     <div className="fixed inset-0 z-50">
@@ -115,7 +148,8 @@ export function MobilePreviewSheet({
         className="absolute inset-x-0 bottom-0 flex h-[92dvh] flex-col overflow-hidden rounded-t-hero glass-strong shadow-float"
       >
         {/* Drag handle — full-width touch strip with the grip pill.
-            Safe-area top keeps it clear of device chrome. */}
+            Safe-area top keeps it clear of device chrome. Prev/next
+            chevrons sit in the same row for discoverability. */}
         <div className="relative shrink-0">
           <div
             onPointerDown={(event) => dragControls.start(event)}
@@ -124,6 +158,30 @@ export function MobilePreviewSheet({
           >
             <div className="h-1.5 w-11 rounded-full bg-tint/[0.18]" />
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              setDirection(-1)
+              goTo(index - 1)
+            }}
+            disabled={index === 0}
+            aria-label="Previous coin"
+            className="absolute left-5 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full text-muted transition-colors duration-200 hover:bg-tint/[0.06] hover:text-foreground disabled:pointer-events-none disabled:opacity-35"
+          >
+            <ChevronLeft size={17} strokeWidth={1.75} />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setDirection(1)
+              goTo(index + 1)
+            }}
+            disabled={index === coins.length - 1}
+            aria-label="Next coin"
+            className="absolute right-16 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full text-muted transition-colors duration-200 hover:bg-tint/[0.06] hover:text-foreground disabled:pointer-events-none disabled:opacity-35"
+          >
+            <ChevronRight size={17} strokeWidth={1.75} />
+          </button>
           <button
             ref={closeRef}
             type="button"
@@ -136,17 +194,30 @@ export function MobilePreviewSheet({
         </div>
 
         {/* Scrollable content — the sheet itself never scrolls, so the
-            footer can stay pinned. */}
+            footer can stay pinned. Horizontal swipes move between
+            coins; vertical drags scroll (touch-action allows pan-y). */}
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-10 pt-2">
-          <AnimatePresence mode="wait" initial={false}>
-            <CoinPreview
-              key={coin.id}
-              coin={coin}
-              favorited={favorited}
-              onToggleFavorite={onToggleFavorite}
-              variant="sheet"
-            />
-          </AnimatePresence>
+          <motion.div
+            className="h-full"
+            drag="x"
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={{ left: 0.45, right: 0.45 }}
+            dragMomentum={false}
+            dragSnapToOrigin
+            whileDrag={{ scale: 0.985 }}
+            onDragEnd={onSwipeEnd}
+          >
+            <AnimatePresence mode="wait" initial={false} custom={direction}>
+              <CoinPreview
+                key={coin.id}
+                coin={coin}
+                favorited={favorited}
+                onToggleFavorite={onToggleFavorite}
+                variant="sheet"
+                custom={direction}
+              />
+            </AnimatePresence>
+          </motion.div>
         </div>
 
         {/* Sticky primary actions — always reachable, clear of the

@@ -24,7 +24,9 @@ export function StarButton({ favorited, onToggle, size = 'sm', className }: Star
       aria-pressed={favorited}
       aria-label={favorited ? 'Remove from watchlist' : 'Add to watchlist'}
       className={cn(
-        'flex shrink-0 items-center justify-center rounded-full text-faint transition-colors duration-200 hover:bg-tint/[0.06] hover:text-foreground',
+        // touch-pan-y keeps touch scrolling working when a thumb lands on
+        // a row's star (framer's tap gesture would otherwise eat the pan).
+        'flex touch-pan-y shrink-0 items-center justify-center rounded-full text-faint transition-colors duration-200 hover:bg-tint/[0.06] hover:text-foreground',
         size === 'sm' ? 'size-8' : 'size-9',
         className,
       )}

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import { cn } from '@/lib/cn'
+import { lockBodyScroll } from '@/lib/scroll-lock'
 
 import { navItems } from './nav'
 import { Sidebar } from './sidebar'
@@ -41,18 +42,18 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
   }, [collapsed])
 
-  // Drawer: close on Escape, lock body scroll while open.
+  // Drawer: close on Escape, lock body scroll while open (ref-counted,
+  // so it can't clobber the sheet's lock or vice versa).
   useEffect(() => {
     if (!mobileOpen) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setMobileOpen(false)
     }
-    const previousOverflow = document.body.style.overflow
+    const unlock = lockBodyScroll()
     document.addEventListener('keydown', onKeyDown)
-    document.body.style.overflow = 'hidden'
     return () => {
       document.removeEventListener('keydown', onKeyDown)
-      document.body.style.overflow = previousOverflow
+      unlock()
     }
   }, [mobileOpen])
 

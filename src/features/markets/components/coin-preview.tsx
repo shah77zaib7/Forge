@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion'
+import { motion, type Variants } from 'framer-motion'
 import { ArrowUpRight, Orbit, Share } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
@@ -27,6 +27,28 @@ interface CoinPreviewProps {
    * the sheet's sticky footer.
    */
   variant?: 'panel' | 'sheet'
+  /** Horizontal swipe direction, threaded through AnimatePresence
+   * `custom` so entering AND exiting coins part correctly: 1 slides in
+   * from the right (next coin), -1 from the left, 0 = no slide. */
+  custom?: number
+}
+
+/** Direction-aware slide for the swipe transition — the exiting coin
+ * glides out the way the new one came, so consecutive swipes part. */
+const previewVariants: Variants = {
+  enter: (direction: number) => ({
+    opacity: 0,
+    x: direction * 48,
+    y: 14,
+    filter: 'blur(4px)',
+  }),
+  center: { opacity: 1, x: 0, y: 0, filter: 'blur(0px)' },
+  exit: (direction: number) => ({
+    opacity: 0,
+    x: direction * -24,
+    y: -10,
+    filter: 'blur(4px)',
+  }),
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -48,6 +70,7 @@ export function CoinPreview({
   favorited,
   onToggleFavorite,
   variant = 'panel',
+  custom = 0,
 }: CoinPreviewProps) {
   const sheet = variant === 'sheet'
   const tone = coin.change24h > 0 ? 'positive' : coin.change24h < 0 ? 'negative' : 'neutral'
@@ -182,9 +205,11 @@ export function CoinPreview({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 14, filter: 'blur(4px)' }}
-      animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-      exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
+      custom={custom}
+      variants={previewVariants}
+      initial="enter"
+      animate="center"
+      exit="exit"
       transition={{ duration: 0.35, ease: ease.smooth }}
     >
       {sheet ? (

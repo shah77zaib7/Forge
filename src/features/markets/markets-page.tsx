@@ -68,6 +68,8 @@ export function MarketsPage() {
 
   // Stable identity so the sheet's focus/scroll effects don't re-run on coin change.
   const closeSheet = useCallback(() => select(null), [select])
+  // Position of the open coin inside the current view (for swiping).
+  const selectedIndex = selected ? filtered.findIndex((coin) => coin.id === selected.id) : -1
 
   return (
     <div className="mx-auto max-w-7xl">
@@ -93,7 +95,7 @@ export function MarketsPage() {
             className="px-1"
           />
 
-          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pb-2 pr-1">
+          <div className="space-y-1 pb-2 pr-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain">
             {loading ? (
               <CoinListSkeleton />
             ) : filtered.length > 0 ? (
@@ -138,9 +140,12 @@ export function MarketsPage() {
 
       {/* Mobile — full-screen workspace sheet */}
       <AnimatePresence>
-        {!isDesktop && selected && (
+        {!isDesktop && selected && selectedIndex >= 0 && (
           <MobilePreviewSheet
             coin={selected}
+            coins={filtered}
+            index={selectedIndex}
+            onSelect={select}
             favorited={favorites.has(selected.id)}
             onToggleFavorite={toggleFavorite}
             onClose={closeSheet}
