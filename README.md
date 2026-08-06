@@ -41,6 +41,10 @@ src/
 │   └── ui/               # Design-system primitives (Button, GlassCard, …)
 ├── design/
 │   └── motion.ts         # Framer Motion tokens (easings, durations, variants)
+├── features/
+│   └── markets/          # The Markets workspace (types, data, hooks, components)
+├── hooks/
+│   └── use-media-query.ts
 ├── dev/
 │   └── design-system.tsx # Design-system reference route
 ├── lib/
@@ -95,5 +99,6 @@ both themes by construction.
 
 ## Status
 
-Foundations + global layout shell (floating glass sidebar, top bar, responsive drawer, animated
-page transitions). Product routes are placeholder surfaces — real features land next.
+Foundations + global layout shell + the first real surface: the **Markets workspace** with
+instant search, category filters, favorites, a two-pane desktop layout (list + selected-coin
+preview) and a mobile workspace sheet. Other routes remain placeholders.

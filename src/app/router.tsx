@@ -3,8 +3,9 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 
 import { DesignSystem } from '@/dev/design-system'
 
+import { MarketsPage } from '@/features/markets'
+
 import { DashboardPage } from './pages/dashboard'
-import { MarketsPage } from './pages/markets'
 import { OraclePage } from './pages/oracle'
 import { SettingsPage } from './pages/settings'
 import { WatchlistPage } from './pages/watchlist'
