@@ -101,4 +101,6 @@ both themes by construction.
 
 Foundations + global layout shell + the first real surface: the **Markets workspace** with
 instant search, category filters, favorites, a two-pane desktop layout (list + selected-coin
-preview) and a mobile workspace sheet. Other routes remain placeholders.
+preview) and a mobile workspace that opens as a native-feeling bottom sheet — drag-to-dismiss
+handle, safe-area-aware insets, scroll-locked background and sticky primary actions. Other
+routes remain placeholders.
