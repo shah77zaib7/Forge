@@ -1,0 +1,299 @@
+@import 'tailwindcss';
+
+/* ============================================================
+   Forge — design tokens
+   ============================================================
+   Every color, shadow and glass recipe flows through runtime
+   CSS variables defined on `:root` (dark) and overridden under
+   `[data-theme='light']`. `@theme inline` maps those variables
+   to Tailwind utilities, so `bg-surface-1`, `text-muted`,
+   `border-border`, `bg-tint/5` etc. resolve in the active theme.
+
+   Never hardcode a color in a component — consume a token.
+   ============================================================ */
+
+@theme inline {
+  /* --- Type ---------------------------------------------------- */
+  --font-sans: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, -apple-system,
+    'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace,
+    'SF Mono', Menlo, monospace;
+
+  /* --- Semantic colors → runtime vars --------------------------- */
+  --color-background: var(--forge-background);
+  --color-surface-0: var(--forge-surface-0);
+  --color-surface-1: var(--forge-surface-1);
+  --color-surface-2: var(--forge-surface-2);
+  --color-surface-3: var(--forge-surface-3);
+  --color-foreground: var(--forge-foreground);
+  --color-muted: var(--forge-muted);
+  --color-faint: var(--forge-faint);
+  --color-positive: var(--forge-positive);
+  --color-negative: var(--forge-negative);
+  --color-border: var(--forge-line);
+  --color-border-strong: var(--forge-line-strong);
+  /* Neutral tint layer — white in dark, near-black in light. Use
+     with opacity modifiers: bg-tint/5, hover:bg-tint/6, … */
+  --color-tint: var(--forge-tint);
+
+  /* --- Radius — generous, liquid --------------------------------- */
+  --radius-control: 14px;
+  --radius-glass: 24px;
+  --radius-panel: 28px;
+  --radius-hero: 32px;
+
+  /* --- Elevation ------------------------------------------------- */
+  --shadow-ambient: var(--forge-shadow-ambient);
+  --shadow-float: var(--forge-shadow-float);
+  --shadow-inset-top: inset 0 1px 0 var(--forge-highlight);
+
+  /* --- Motion — signature cubic-bezier curves --------------------- */
+  --ease-smooth: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Film-grain texture used by the ambient background layer */
+:root {
+  --forge-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140' viewBox='0 0 140 140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ============================================================
+   Dark theme (default)
+   ============================================================ */
+
+:root {
+  color-scheme: dark;
+
+  /* Surfaces — near-black charcoal */
+  --forge-background: #09090b;
+  --forge-surface-0: #0b0b0f;
+  --forge-surface-1: #0f0f14;
+  --forge-surface-2: #14141a;
+  --forge-surface-3: #1a1a22;
+
+  /* Text */
+  --forge-foreground: #fafafa;
+  --forge-muted: #a1a1aa;
+  --forge-faint: #82828d;
+
+  /* Market semantics — green & red only */
+  --forge-positive: #10b981;
+  --forge-negative: #f43f5e;
+
+  /* Tint + hairlines */
+  --forge-tint: #ffffff;
+  --forge-line: rgba(255, 255, 255, 0.08);
+  --forge-line-strong: rgba(255, 255, 255, 0.16);
+  --forge-highlight: rgba(255, 255, 255, 0.1);
+
+  /* Liquid glass recipe */
+  --forge-glass-border: rgba(255, 255, 255, 0.1);
+  --forge-glass-top: rgba(255, 255, 255, 0.09);
+  --forge-glass-top-strong: rgba(255, 255, 255, 0.13);
+  --forge-glass-bottom: rgba(255, 255, 255, 0.03);
+  --forge-glass-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.35),
+    0 24px 60px -24px rgba(0, 0, 0, 0.6);
+  --forge-glass-shadow-strong:
+    0 2px 4px rgba(0, 0, 0, 0.3),
+    0 32px 80px -28px rgba(0, 0, 0, 0.7);
+
+  /* Elevation */
+  --forge-shadow-ambient:
+    0 1px 1px rgba(0, 0, 0, 0.35),
+    0 24px 60px -24px rgba(0, 0, 0, 0.6);
+  --forge-shadow-float:
+    0 2px 4px rgba(0, 0, 0, 0.3),
+    0 32px 80px -24px rgba(0, 0, 0, 0.7);
+
+  /* Ambient backdrop */
+  --forge-ambient-1: rgba(255, 255, 255, 0.06);
+  --forge-ambient-2: rgba(255, 255, 255, 0.035);
+  --forge-ambient-3: rgba(255, 255, 255, 0.03);
+  --forge-noise-opacity: 0.022;
+
+  /* Selection + scrollbars */
+  --forge-selection: rgba(255, 255, 255, 0.18);
+  --forge-scrollbar: rgba(255, 255, 255, 0.14);
+}
+
+/* ============================================================
+   Light theme
+   Soft whites, subtle grays, elegant hairline borders and
+   gentle shadows — same liquid-glass language, daylight values.
+   ============================================================ */
+
+[data-theme='light'] {
+  color-scheme: light;
+
+  /* Surfaces — soft white ramp */
+  --forge-background: #f4f4f5;
+  --forge-surface-0: #ffffff;
+  --forge-surface-1: #fafafa;
+  --forge-surface-2: #f1f1f2;
+  --forge-surface-3: #e9e9eb;
+
+  /* Text — muted/faint kept ≥4.5:1 on the soft-white background */
+  --forge-foreground: #101013;
+  --forge-muted: #5d5d66;
+  --forge-faint: #6f6f78;
+
+  /* Market semantics — deepened for contrast on white */
+  --forge-positive: #047857;
+  --forge-negative: #be123c;
+
+  /* Tint + hairlines */
+  --forge-tint: #0a0a0b;
+  --forge-line: rgba(10, 10, 11, 0.08);
+  --forge-line-strong: rgba(10, 10, 11, 0.14);
+  --forge-highlight: rgba(255, 255, 255, 0.85);
+
+  /* Liquid glass recipe — white frost with a soft drop */
+  --forge-glass-border: rgba(255, 255, 255, 0.7);
+  --forge-glass-top: rgba(255, 255, 255, 0.85);
+  --forge-glass-top-strong: rgba(255, 255, 255, 0.92);
+  --forge-glass-bottom: rgba(255, 255, 255, 0.5);
+  --forge-glass-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 20px 44px -20px rgba(15, 23, 42, 0.16);
+  --forge-glass-shadow-strong:
+    0 2px 6px rgba(15, 23, 42, 0.05),
+    0 28px 56px -20px rgba(15, 23, 42, 0.18);
+
+  /* Elevation */
+  --forge-shadow-ambient:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 16px 40px -16px rgba(15, 23, 42, 0.12);
+  --forge-shadow-float:
+    0 2px 4px rgba(15, 23, 42, 0.05),
+    0 24px 48px -16px rgba(15, 23, 42, 0.16);
+
+  /* Ambient backdrop — gentle gray vignette on white */
+  --forge-ambient-1: rgba(255, 255, 255, 0.9);
+  --forge-ambient-2: rgba(0, 0, 0, 0.035);
+  --forge-ambient-3: rgba(0, 0, 0, 0.03);
+  --forge-noise-opacity: 0.016;
+
+  /* Selection + scrollbars */
+  --forge-selection: rgba(10, 10, 11, 0.1);
+  --forge-scrollbar: rgba(10, 10, 11, 0.18);
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+
+@layer base {
+  html {
+    height: 100%;
+  }
+
+  body {
+    min-height: 100%;
+    background-color: var(--forge-background);
+    color: var(--forge-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    overscroll-behavior: none;
+  }
+
+  ::selection {
+    background-color: var(--forge-selection);
+    color: var(--forge-foreground);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--forge-scrollbar) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--forge-scrollbar);
+    border-radius: 8px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* ============================================================
+   Liquid-glass surfaces
+   ============================================================ */
+
+@utility glass {
+  border: 1px solid var(--forge-glass-border);
+  background: linear-gradient(180deg, var(--forge-glass-top), var(--forge-glass-bottom));
+  box-shadow: inset 0 1px 0 var(--forge-highlight), var(--forge-glass-shadow);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+}
+
+@utility glass-strong {
+  border: 1px solid var(--forge-glass-border);
+  background: linear-gradient(180deg, var(--forge-glass-top-strong), var(--forge-glass-bottom));
+  box-shadow: inset 0 1px 0 var(--forge-highlight), var(--forge-glass-shadow-strong);
+  backdrop-filter: blur(28px) saturate(170%);
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+}
+
+/* ============================================================
+   Ambient backdrop
+   ============================================================ */
+
+@layer components {
+  .ambient {
+    position: fixed;
+    inset: 0;
+    z-index: -10;
+    pointer-events: none;
+    background:
+      radial-gradient(
+        56rem 30rem at 50% -10%,
+        var(--forge-ambient-1),
+        transparent 62%
+      ),
+      radial-gradient(
+        40rem 26rem at 88% 108%,
+        var(--forge-ambient-2),
+        transparent 60%
+      ),
+      radial-gradient(
+        30rem 22rem at 8% 100%,
+        var(--forge-ambient-3),
+        transparent 55%
+      ),
+      var(--forge-background);
+  }
+
+  .ambient::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: var(--forge-noise-opacity);
+    background-image: var(--forge-noise);
+    mix-blend-mode: overlay;
+  }
+}
+
+/* ============================================================
+   Theme transition
+   Applied only while switching, so every color property glides
+   to its new value in one calm, coordinated motion.
+   ============================================================ */
+
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition:
+    background-color 0.4s ease,
+    border-color 0.4s ease,
+    color 0.4s ease,
+    fill 0.4s ease,
+    stroke 0.4s ease,
+    box-shadow 0.4s ease !important;
+}
