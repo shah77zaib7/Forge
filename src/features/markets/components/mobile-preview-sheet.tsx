@@ -1,4 +1,4 @@
-import { AnimatePresence, motion, useDragControls } from 'framer-motion'
+import { AnimatePresence, motion, useDragControls, useMotionValue } from 'framer-motion'
 import type { PanInfo } from 'framer-motion'
 import { ArrowUpRight, ChevronLeft, ChevronRight, Orbit, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -9,6 +9,7 @@ import { ease } from '@/design/motion'
 import { isBodyScrollLocked, lockBodyScroll } from '@/lib/scroll-lock'
 
 import type { Coin } from '../types'
+import { CoinPeek } from './coin-peek'
 import { CoinPreview } from './coin-preview'
 
 /** Pull-to-dismiss thresholds — drag past either to close. */
@@ -34,7 +35,8 @@ interface MobilePreviewSheetProps {
  * The mobile "workspace" — a native-feeling bottom sheet that rises over
  * the list and fills ~92% of the viewport. Handles its own focus, Escape,
  * scroll lock, drag-to-dismiss from the handle, and horizontal swipes
- * to move between coins in the current view.
+ * to move between coins in the current view — with a sliver of the
+ * neighbour coin peeking in from the edge while dragging, iOS-style.
  */
 export function MobilePreviewSheet({
   coin,
@@ -50,6 +52,13 @@ export function MobilePreviewSheet({
   const dragControls = useDragControls()
   // Entrance direction for the next coin (1 = swiped left, next coin).
   const [direction, setDirection] = useState<1 | -1 | 0>(0)
+  // Shared drag offset — the swipe track AND the edge-peek cards move
+  // together with the finger, so a sliver of the neighbour glides in
+  // from the screen edge while swiping (iOS photo-gallery style).
+  const dragX = useMotionValue(0)
+  // Adjacent coins for the edge peeks — rendered only when one exists.
+  const prevCoin = index > 0 ? coins[index - 1] : null
+  const nextCoin = index < coins.length - 1 ? coins[index + 1] : null
 
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null
@@ -193,12 +202,14 @@ export function MobilePreviewSheet({
           </button>
         </div>
 
-        {/* Scrollable content — the sheet itself never scrolls, so the
-            footer can stay pinned. Horizontal swipes move between
-            coins; vertical drags scroll (touch-action allows pan-y). */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-10 pt-2">
+        {/* Swipeable content — the sheet itself never scrolls, so the
+            footer can stay pinned. The dragged track owns horizontal
+            swipes and carries the neighbour edge-peeks; the inner
+            scroller handles vertical panning (touch-action pan-y). */}
+        <div className="min-h-0 flex-1">
           <motion.div
-            className="h-full"
+            className="relative h-full"
+            style={{ x: dragX }}
             drag="x"
             dragConstraints={{ left: 0, right: 0 }}
             dragElastic={{ left: 0.45, right: 0.45 }}
@@ -207,16 +218,21 @@ export function MobilePreviewSheet({
             whileDrag={{ scale: 0.985 }}
             onDragEnd={onSwipeEnd}
           >
-            <AnimatePresence mode="wait" initial={false} custom={direction}>
-              <CoinPreview
-                key={coin.id}
-                coin={coin}
-                favorited={favorited}
-                onToggleFavorite={onToggleFavorite}
-                variant="sheet"
-                custom={direction}
-              />
-            </AnimatePresence>
+            {prevCoin && <CoinPeek coin={prevCoin} side="prev" />}
+            {nextCoin && <CoinPeek coin={nextCoin} side="next" />}
+
+            <div className="h-full overflow-y-auto overscroll-contain px-6 pb-10 pt-2">
+              <AnimatePresence mode="wait" initial={false} custom={direction}>
+                <CoinPreview
+                  key={coin.id}
+                  coin={coin}
+                  favorited={favorited}
+                  onToggleFavorite={onToggleFavorite}
+                  variant="sheet"
+                  custom={direction}
+                />
+              </AnimatePresence>
+            </div>
           </motion.div>
         </div>
 
