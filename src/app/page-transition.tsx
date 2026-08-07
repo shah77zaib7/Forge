@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from 'framer-motion'
-import type { ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
 
 import { ease } from '@/design/motion'
 
@@ -10,10 +10,12 @@ import { ease } from '@/design/motion'
  */
 export function PageTransition({ children }: { children: ReactNode }) {
   const reduceMotion = useReducedMotion()
+  const ref = useRef<HTMLDivElement>(null)
 
   if (reduceMotion) {
     return (
       <motion.div
+        ref={ref}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -26,6 +28,7 @@ export function PageTransition({ children }: { children: ReactNode }) {
 
   return (
     <motion.div
+      ref={ref}
       initial={{ opacity: 0, y: 14, filter: 'blur(6px)' }}
       animate={{
         opacity: 1,
@@ -38,6 +41,13 @@ export function PageTransition({ children }: { children: ReactNode }) {
         y: -8,
         filter: 'blur(4px)',
         transition: { duration: 0.25, ease: ease.smooth },
+      }}
+      // Any non-none filter value creates a containing block, which would
+      // hijack position:fixed descendants (mobile composers, quick-action
+      // bars) for the rest of the page's life. Strip it once the entrance
+      // settles — the transient blur still plays, nothing lingers.
+      onAnimationComplete={() => {
+        ref.current?.style.removeProperty('filter')
       }}
     >
       {children}

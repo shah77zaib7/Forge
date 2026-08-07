@@ -30,6 +30,7 @@
   --color-faint: var(--forge-faint);
   --color-positive: var(--forge-positive);
   --color-negative: var(--forge-negative);
+  --color-warning: var(--forge-warning);
   --color-border: var(--forge-line);
   --color-border-strong: var(--forge-line-strong);
   /* Neutral tint layer — white in dark, near-black in light. Use
@@ -76,9 +77,10 @@
   --forge-muted: #a1a1aa;
   --forge-faint: #82828d;
 
-  /* Market semantics — green & red only */
+  /* Market semantics — green & red only, plus amber for advisories */
   --forge-positive: #10b981;
   --forge-negative: #f43f5e;
+  --forge-warning: #fbbf24;
 
   /* Tint + hairlines */
   --forge-tint: #ffffff;
@@ -141,6 +143,7 @@
   /* Market semantics — deepened for contrast on white */
   --forge-positive: #047857;
   --forge-negative: #be123c;
+  --forge-warning: #b45309;
 
   /* Tint + hairlines */
   --forge-tint: #0a0a0b;
