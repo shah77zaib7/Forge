@@ -1,3 +1,5 @@
+import { motion, type MotionValue } from 'framer-motion'
+
 import { cn } from '@/lib/cn'
 import { formatChange } from '@/lib/format'
 
@@ -13,6 +15,8 @@ interface CoinPeekProps {
    * swiping right.
    */
   side: 'next' | 'prev'
+  /** The swipe track's shared drag offset — keeps the peek glued to the card. */
+  x: MotionValue<number>
 }
 
 /**
@@ -22,13 +26,14 @@ interface CoinPeekProps {
  * edge — the iOS photo-gallery edge peek. Hidden at rest; decorative,
  * never interactive (pointer-events-none, aria-hidden).
  */
-export function CoinPeek({ coin, side }: CoinPeekProps) {
+export function CoinPeek({ coin, side, x }: CoinPeekProps) {
   const next = side === 'next'
   const tone = coin.change24h > 0 ? 'positive' : coin.change24h < 0 ? 'negative' : 'neutral'
 
   return (
-    <div
+    <motion.div
       aria-hidden
+      style={{ x }}
       className={cn(
         'pointer-events-none absolute inset-y-0 flex w-64',
         next ? 'left-full pr-10' : 'right-full pl-10',
@@ -63,6 +68,6 @@ export function CoinPeek({ coin, side }: CoinPeekProps) {
           </span>
         </div>
       </div>
-    </div>
+    </motion.div>
   )
 }

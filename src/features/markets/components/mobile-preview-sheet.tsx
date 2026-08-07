@@ -203,25 +203,24 @@ export function MobilePreviewSheet({
         </div>
 
         {/* Swipeable content — the sheet itself never scrolls, so the
-            footer can stay pinned. The dragged track owns horizontal
-            swipes and carries the neighbour edge-peeks; the inner
-            scroller handles vertical panning (touch-action pan-y). */}
-        <div className="min-h-0 flex-1">
-          <motion.div
-            className="relative h-full"
-            style={{ x: dragX }}
-            drag="x"
-            dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={{ left: 0.45, right: 0.45 }}
-            dragMomentum={false}
-            dragSnapToOrigin
-            whileDrag={{ scale: 0.985 }}
-            onDragEnd={onSwipeEnd}
-          >
-            {prevCoin && <CoinPeek coin={prevCoin} side="prev" />}
-            {nextCoin && <CoinPeek coin={nextCoin} side="next" />}
-
-            <div className="h-full overflow-y-auto overscroll-contain px-6 pb-10 pt-2">
+            footer can stay pinned. The vertical scroller stays OUTSIDE
+            the dragged track (a scroll container nested inside the
+            draggable swallows touch gestures on mobile), and the
+            neighbour edge-peeks live beside both, driven by the same
+            dragX so they glide in sync with the finger. */}
+        <div className="relative min-h-0 flex-1">
+          <div className="h-full overflow-y-auto overscroll-contain px-6 pb-10 pt-2 touch-pan-y">
+            <motion.div
+              className="h-full"
+              style={{ x: dragX }}
+              drag="x"
+              dragConstraints={{ left: 0, right: 0 }}
+              dragElastic={{ left: 0.45, right: 0.45 }}
+              dragMomentum={false}
+              dragSnapToOrigin
+              whileDrag={{ scale: 0.985 }}
+              onDragEnd={onSwipeEnd}
+            >
               <AnimatePresence mode="wait" initial={false} custom={direction}>
                 <CoinPreview
                   key={coin.id}
@@ -232,8 +231,11 @@ export function MobilePreviewSheet({
                   custom={direction}
                 />
               </AnimatePresence>
-            </div>
-          </motion.div>
+            </motion.div>
+          </div>
+
+          {prevCoin && <CoinPeek coin={prevCoin} side="prev" x={dragX} />}
+          {nextCoin && <CoinPeek coin={nextCoin} side="next" x={dragX} />}
         </div>
 
         {/* Sticky primary actions — always reachable, clear of the
