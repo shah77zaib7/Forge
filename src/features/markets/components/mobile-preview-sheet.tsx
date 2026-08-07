@@ -3,6 +3,7 @@ import type { PanInfo } from 'framer-motion'
 import { ArrowUpRight, ChevronLeft, ChevronRight, Orbit, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { ease } from '@/design/motion'
@@ -47,6 +48,7 @@ export function MobilePreviewSheet({
   onToggleFavorite,
   onClose,
 }: MobilePreviewSheetProps) {
+  const navigate = useNavigate()
   const closeRef = useRef<HTMLButtonElement>(null)
   const sheetRef = useRef<HTMLDivElement>(null)
   const dragControls = useDragControls()
@@ -242,11 +244,23 @@ export function MobilePreviewSheet({
             home indicator via the safe-area bottom padding. */}
         <div className="shrink-0 border-t border-border bg-background/50 px-5 pb-[calc(env(safe-area-inset-bottom,0px)+1.25rem)] pt-4 backdrop-blur-2xl">
           <div className="grid grid-cols-2 gap-3">
-            <Button size="lg" className="w-full px-4">
+            <Button
+              size="lg"
+              className="w-full px-4"
+              onClick={() => {
+                onClose()
+                navigate(`/markets/${coin.id}`)
+              }}
+            >
               Open Workspace
               <ArrowUpRight size={16} strokeWidth={2} />
             </Button>
-            <Button size="lg" variant="secondary" className="w-full px-4">
+            <Button
+              size="lg"
+              variant="secondary"
+              className="w-full px-4"
+              onClick={() => navigate('/oracle')}
+            >
               <Orbit size={16} strokeWidth={1.75} />
               Ask Oracle
             </Button>

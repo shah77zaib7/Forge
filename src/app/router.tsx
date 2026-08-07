@@ -4,6 +4,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { DesignSystem } from '@/dev/design-system'
 
 import { MarketsPage } from '@/features/markets'
+import { WorkspacePage } from '@/features/workspace'
 
 import { DashboardPage } from './pages/dashboard'
 import { OraclePage } from './pages/oracle'
@@ -27,6 +28,7 @@ export function AppRouter() {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/markets" element={<MarketsPage />} />
+            <Route path="/markets/:coinId" element={<WorkspacePage />} />
             <Route path="/oracle" element={<OraclePage />} />
             <Route path="/watchlist" element={<WatchlistPage />} />
             <Route path="/settings" element={<SettingsPage />} />

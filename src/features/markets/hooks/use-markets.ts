@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+
+import { useFavorites } from '@/hooks/use-favorites'
 
 import { coins } from '../data'
 import type { Coin, MarketFilter } from '../types'
-
-const DEFAULT_FAVORITES = new Set(['bitcoin', 'ethereum', 'solana'])
 
 export interface UseMarketsResult {
   query: string
@@ -23,7 +23,9 @@ export function useMarkets(): UseMarketsResult {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<MarketFilter>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [favorites, setFavorites] = useState<Set<string>>(() => new Set(DEFAULT_FAVORITES))
+  // Shared app-wide watchlist (localStorage-backed) so Markets and the
+  // Coin Workspace star the same coins.
+  const { favorites, toggleFavorite } = useFavorites()
   const [loading, setLoading] = useState(true)
 
   // Simulate a short initial fetch so skeletons get a moment to breathe.
@@ -53,19 +55,7 @@ export function useMarkets(): UseMarketsResult {
     [selectedId],
   )
 
-  const select = useCallback((id: string | null) => setSelectedId(id), [])
-
-  const toggleFavorite = useCallback((id: string) => {
-    setFavorites((previous) => {
-      const next = new Set(previous)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
-      return next
-    })
-  }, [])
+  const select = (id: string | null) => setSelectedId(id)
 
   return {
     query,

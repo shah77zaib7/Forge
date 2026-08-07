@@ -1,3 +1,4 @@
+import { MotionConfig } from 'framer-motion'
 import { BrowserRouter } from 'react-router-dom'
 
 import { AmbientBackground } from './ambient-background'
@@ -8,8 +9,13 @@ export function App() {
   return (
     <ThemeProvider>
       <BrowserRouter>
-        <AmbientBackground />
-        <AppRouter />
+        {/* With reducedMotion="user", transform & layout animations are
+            skipped for users who prefer reduced motion — opacity fades
+            remain so content never pops abruptly. */}
+        <MotionConfig reducedMotion="user">
+          <AmbientBackground />
+          <AppRouter />
+        </MotionConfig>
       </BrowserRouter>
     </ThemeProvider>
   )

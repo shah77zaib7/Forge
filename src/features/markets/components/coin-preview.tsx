@@ -1,5 +1,6 @@
 import { motion, type Variants } from 'framer-motion'
 import { ArrowUpRight, Orbit, Share } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -72,6 +73,7 @@ export function CoinPreview({
   variant = 'panel',
   custom = 0,
 }: CoinPreviewProps) {
+  const navigate = useNavigate()
   const sheet = variant === 'sheet'
   const tone = coin.change24h > 0 ? 'positive' : coin.change24h < 0 ? 'negative' : 'neutral'
 
@@ -183,11 +185,11 @@ export function CoinPreview({
         </div>
       ) : (
         <div className="mt-auto flex flex-wrap gap-2 pt-8">
-          <Button>
+          <Button onClick={() => navigate(`/markets/${coin.id}`)}>
             Open Workspace
             <ArrowUpRight size={15} strokeWidth={2} />
           </Button>
-          <Button variant="secondary">
+          <Button variant="secondary" onClick={() => navigate('/oracle')}>
             <Orbit size={15} strokeWidth={1.75} />
             Ask Oracle
           </Button>

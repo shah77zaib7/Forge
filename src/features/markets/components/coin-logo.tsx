@@ -4,6 +4,7 @@ const sizes = {
   sm: 'size-8 text-[11px]',
   md: 'size-10 text-sm',
   lg: 'size-16 text-2xl',
+  xl: 'size-20 text-3xl',
 } as const
 
 interface CoinLogoProps {

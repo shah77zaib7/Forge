@@ -70,7 +70,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
   }, [mobileOpen])
 
-  const current = navItems.find((item) => item.to === location.pathname)
+  // Prefix match so nested routes (e.g. /markets/bitcoin) still show
+  // their parent workspace's label.
+  const current = navItems.find(
+    (item) => item.to === location.pathname || location.pathname.startsWith(`${item.to}/`),
+  )
   const currentLabel =
     location.pathname === '/design-system' ? 'Design System' : (current?.label ?? 'Workspace')
 
