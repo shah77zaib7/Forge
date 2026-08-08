@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
 
-import { useFavorites } from '@/hooks/use-favorites'
+import { useFavorites } from '@/store/favorites'
 
 import { coins } from '@/features/markets/data'
 

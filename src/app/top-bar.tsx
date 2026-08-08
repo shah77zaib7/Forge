@@ -1,5 +1,8 @@
 import { Bell, ChevronRight, Menu, Search } from 'lucide-react'
 import type { Ref } from 'react'
+import { useNavigate } from 'react-router-dom'
+
+import { useProfile } from '@/store/profile'
 
 import { ThemeToggle } from './theme-toggle'
 
@@ -15,6 +18,10 @@ interface TopBarProps {
  * collapses the breadcrumb; on desktop it hosts search and actions.
  */
 export function TopBar({ onMenuClick, currentLabel, mobileOpen, menuButtonRef }: TopBarProps) {
+  const navigate = useNavigate()
+  const { profile } = useProfile()
+  const initial = profile.displayName.trim().charAt(0).toUpperCase() || 'F'
+
   return (
     <header className="sticky top-4 z-30 mb-6 flex h-14 items-center gap-2 rounded-hero glass px-4">
       <button
@@ -57,12 +64,19 @@ export function TopBar({ onMenuClick, currentLabel, mobileOpen, menuButtonRef }:
           <Bell size={17} strokeWidth={1.75} />
         </button>
 
-        <div
-          className="flex size-9 items-center justify-center rounded-full border border-border bg-tint/[0.08] text-xs font-medium text-foreground"
-          aria-hidden
+        <button
+          type="button"
+          aria-label="Open profile settings"
+          title="Profile"
+          onClick={() => navigate('/settings')}
+          className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-tint/[0.08] text-xs font-medium text-foreground transition-colors duration-200 hover:border-border-strong hover:bg-tint/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tint/30"
         >
-          F
-        </div>
+          {profile.avatar ? (
+            <img src={profile.avatar} alt="" className="size-full object-cover" />
+          ) : (
+            <span aria-hidden>{initial}</span>
+          )}
+        </button>
       </div>
     </header>
   )

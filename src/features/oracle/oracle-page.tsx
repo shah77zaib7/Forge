@@ -8,6 +8,7 @@ import {
 } from '@/features/workspace/data'
 
 import type { Coin } from '@/features/markets/types'
+import { usePreferences } from '@/store/preferences'
 
 import { Conversation } from './components/conversation'
 import { HistorySheet } from './components/history-sheet'
@@ -37,15 +38,21 @@ import type {
  * without UI changes. Market data is the project's seeded mock feed.
  */
 export function OraclePage() {
+  const { preferences } = usePreferences()
   const [messages, setMessages] = useState<OracleMessage[]>([])
   const [activeCoinId, setActiveCoinId] = useState('bitcoin')
-  const [timeframeId, setTimeframeId] = useState<LiquidityTimeframeId>(DEFAULT_LIQUIDITY_TIMEFRAME)
+  // Seed from Settings preferences; a session override persists separately.
+  const [timeframeId, setTimeframeId] = useState<LiquidityTimeframeId>(
+    preferences.defaultAnalysisTimeframe,
+  )
   const [mode, setMode] = useState<OracleMode>(() => {
     try {
-      return sessionStorage.getItem('forge.oracle.mode') === 'teacher' ? 'teacher' : 'trader'
+      const session = sessionStorage.getItem('forge.oracle.mode')
+      if (session === 'teacher' || session === 'trader') return session
     } catch {
-      return 'trader'
+      /* storage unavailable — ignore */
     }
+    return preferences.defaultOracleMode
   })
   const [thinking, setThinking] = useState(false)
   const [contextOpen, setContextOpen] = useState(false)

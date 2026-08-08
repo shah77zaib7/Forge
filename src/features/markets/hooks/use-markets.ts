@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { useFavorites } from '@/hooks/use-favorites'
+import { useFavorites } from '@/store/favorites'
 
 import { coins } from '../data'
 import type { Coin, MarketFilter } from '../types'

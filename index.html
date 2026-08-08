@@ -7,9 +7,11 @@
     <meta name="theme-color" content="#09090B" />
     <script>
       // Set the theme before first paint to avoid a flash of the wrong mode.
+      // The stored value is the mode ('system' | 'dark' | 'light'); resolve
+      // 'system' (or an absent value) through the OS preference.
       try {
         var t = localStorage.getItem('forge.theme');
-        if (t !== 'light' && t !== 'dark') {
+        if (t !== 'dark' && t !== 'light') {
           t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
         }
         document.documentElement.dataset.theme = t;
