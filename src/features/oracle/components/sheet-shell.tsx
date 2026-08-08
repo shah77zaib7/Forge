@@ -1,38 +1,32 @@
 import { AnimatePresence, motion, useDragControls } from 'framer-motion'
 import { X } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 import { ease } from '@/design/motion'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { isBodyScrollLocked, lockBodyScroll } from '@/lib/scroll-lock'
-import type { Coin } from '@/features/markets/types'
-import type { LiquidityTimeframeId } from '@/features/workspace/data'
-
-import type { MarketHealth } from '../data'
-import { ContextPanel } from './context-panel'
+import { cn } from '@/lib/cn'
 
 const CLOSE_OFFSET = 100
 const CLOSE_VELOCITY = 650
 
-interface MobileContextSheetProps {
+interface SheetShellProps {
   open: boolean
   onClose: () => void
-  coin: Coin
-  timeframeId: LiquidityTimeframeId
-  onTimeframeChange: (id: LiquidityTimeframeId) => void
-  health: MarketHealth
+  /** Accessible dialog name, e.g. \"Market context\". */
+  label: string
+  title: ReactNode
+  children: ReactNode
 }
 
 /**
- * Mobile stand-in for the desktop sidebar — a glass sheet that rises over
- * the conversation with the live context. Handles its own focus, Escape,
- * scroll lock and drag-to-dismiss.
+ * Shared sheet chrome — a glass panel that rises from the bottom on
+ * mobile and slides in from the right on desktop. Handles its own
+ * focus, Escape, body scroll lock and drag-to-dismiss (mobile).
  */
-export function MobileContextSheet({
-  open,
-  onClose,
-  ...panelProps
-}: MobileContextSheetProps) {
+export function SheetShell({ open, onClose, label, title, children }: SheetShellProps) {
+  const isDesktop = useMediaQuery('(min-width: 1024px)')
   const dragControls = useDragControls()
   const closeRef = useRef<HTMLButtonElement>(null)
   const sheetRef = useRef<HTMLDivElement>(null)
@@ -82,7 +76,7 @@ export function MobileContextSheet({
   return createPortal(
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="fixed inset-0 z-50">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -96,15 +90,16 @@ export function MobileContextSheet({
             ref={sheetRef}
             role="dialog"
             aria-modal="true"
-            aria-label="Market context"
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
+            aria-label={label}
+            initial={isDesktop ? { x: '100%' } : { y: '100%' }}
+            animate={{ x: 0, y: 0 }}
+            exit={isDesktop ? { x: '100%' } : { y: '100%' }}
             transition={{
+              x: { type: 'spring', bounce: 0.15, duration: 0.5 },
               y: { type: 'spring', bounce: 0.15, duration: 0.5 },
               default: { duration: 0.2, ease: ease.smooth },
             }}
-            drag="y"
+            drag={isDesktop ? false : 'y'}
             dragListener={false}
             dragControls={dragControls}
             dragConstraints={{ top: 0, bottom: 0 }}
@@ -115,29 +110,36 @@ export function MobileContextSheet({
             onDragEnd={(_, info) => {
               if (info.offset.y > CLOSE_OFFSET || info.velocity.y > CLOSE_VELOCITY) onClose()
             }}
-            className="absolute inset-x-0 bottom-0 flex h-[78dvh] flex-col overflow-hidden rounded-t-hero glass-strong shadow-float"
+            className={cn(
+              'absolute flex flex-col overflow-hidden glass-strong shadow-float',
+              isDesktop
+                ? 'inset-y-0 right-0 w-[26rem] max-w-[92vw] rounded-l-hero'
+                : 'inset-x-0 bottom-0 max-h-[84dvh] rounded-t-hero',
+            )}
           >
-            <div className="relative shrink-0">
+            {!isDesktop && (
               <div
                 onPointerDown={(event) => dragControls.start(event)}
                 aria-hidden
-                className="flex cursor-grab touch-none items-center justify-center px-20 pb-3 pt-[calc(env(safe-area-inset-top,0px)+0.6rem)] active:cursor-grabbing"
+                className="flex cursor-grab touch-none items-center justify-center px-20 pb-2.5 pt-[calc(env(safe-area-inset-top,0px)+0.6rem)] active:cursor-grabbing"
               >
                 <div className="h-1.5 w-11 rounded-full bg-tint/[0.18]" />
               </div>
+            )}
+            <div className="relative flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-4">
+              <div className="min-w-0">{title}</div>
               <button
                 ref={closeRef}
                 type="button"
                 onClick={onClose}
-                aria-label="Close market context"
-                className="absolute right-5 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full text-muted transition-colors duration-200 hover:bg-tint/[0.06] hover:text-foreground"
+                aria-label={`Close ${label}`}
+                className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted transition-colors duration-200 hover:bg-tint/[0.06] hover:text-foreground"
               >
                 <X size={17} />
               </button>
             </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-[calc(env(safe-area-inset-bottom,0px)+1.75rem)] pt-2 touch-pan-y">
-              <ContextPanel {...panelProps} />
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-[calc(env(safe-area-inset-bottom,0px)+1.75rem)] pt-4 touch-pan-y">
+              {children}
             </div>
           </motion.div>
         </div>

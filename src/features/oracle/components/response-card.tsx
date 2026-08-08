@@ -1,26 +1,36 @@
 import { motion } from 'framer-motion'
 import {
   AlertTriangle,
+  ArrowLeftRight,
+  Bookmark,
   BookOpen,
   BrainCircuit,
   CandlestickChart,
   Check,
+  Copy,
   Layers,
+  Newspaper,
+  RefreshCw,
+  Share,
   Target,
+  type LucideIcon,
 } from 'lucide-react'
-import { useEffect, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { GlassCard } from '@/components/ui/glass-card'
 import { ease } from '@/design/motion'
 import { cn } from '@/lib/cn'
 
+import { cardToText } from '../data'
 import { useProgressive } from '../hooks/use-oracle-stream'
 import type {
   AnalysisCard,
+  ComparisonCard,
   EducationalCard,
   LiquidityCard,
   LiquidityWall,
+  MarketBriefCard,
   OracleCard,
   OracleMessage,
   TradeSetupCard,
@@ -68,7 +78,7 @@ function CardHeader({
   subtitle,
   badge,
 }: {
-  icon: typeof BrainCircuit
+  icon: LucideIcon
   title: string
   subtitle: string
   badge?: ReactNode
@@ -99,18 +109,160 @@ function Caret() {
   )
 }
 
+/** A quiet bulleted list — used by brief and reasoning sections. */
+function BulletList({ items }: { items: string[] }) {
+  return (
+    <ul className="space-y-2">
+      {items.map((item) => (
+        <li key={item} className="flex items-start gap-2.5 text-[13px] leading-relaxed text-foreground/85">
+          <span aria-hidden className="mt-[7px] size-1 shrink-0 rounded-full bg-tint/[0.35]" />
+          {item}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Message actions — Copy / Save / Share / Regenerate                  */
+/* ------------------------------------------------------------------ */
+
+function MessageActions({
+  card,
+  messageId,
+  onRegenerate,
+  onSave,
+}: {
+  card: OracleCard
+  messageId: string
+  onRegenerate: (id: string) => void
+  onSave?: () => 'saved' | 'exists' | null
+}) {
+  const [hint, setHint] = useState<string | null>(null)
+  const timer = useRef<number | null>(null)
+
+  const flash = (label: string) => {
+    setHint(label)
+    if (timer.current) window.clearTimeout(timer.current)
+    timer.current = window.setTimeout(() => setHint(null), 1600)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (timer.current) window.clearTimeout(timer.current)
+    }
+  }, [])
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(cardToText(card))
+      flash('Copied')
+    } catch {
+      flash('Copy unavailable')
+    }
+  }
+
+  const actions: Array<{ icon: LucideIcon; label: string; run: () => void }> = [
+    { icon: Copy, label: 'Copy', run: copy },
+    {
+      icon: Bookmark,
+      label: 'Save analysis',
+      run: () => {
+        const result = onSave?.()
+        if (result === 'saved') flash('Saved to history')
+        else if (result === 'exists') flash('Already saved')
+      },
+    },
+    { icon: Share, label: 'Share', run: () => flash('Sharing lands with the live Oracle') },
+    {
+      icon: RefreshCw,
+      label: 'Regenerate',
+      run: () => {
+        flash('Regenerating…')
+        onRegenerate(messageId)
+      },
+    },
+  ]
+
+  return (
+    <div className="relative flex items-center gap-0.5">
+      {hint && (
+        <motion.span
+          initial={{ opacity: 0, x: 4 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="absolute right-full mr-2 whitespace-nowrap text-[10px] text-faint"
+        >
+          {hint}
+        </motion.span>
+      )}
+      {actions.map(({ icon: Icon, label, run }) => (
+        <button
+          key={label}
+          type="button"
+          onClick={run}
+          aria-label={label}
+          title={label}
+          className="flex size-7 items-center justify-center rounded-full text-faint opacity-100 transition-all duration-200 hover:bg-tint/[0.06] hover:text-foreground focus-visible:opacity-100 active:scale-90 lg:opacity-0 lg:group-hover:opacity-100"
+        >
+          <Icon size={13} strokeWidth={1.75} />
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Card footer — a quiet \"Read complete\" cue on the left and the message
+ * actions on the right. Fades in once the stream finishes. Actions are
+ * always visible on touch (no hover), hidden until hover on desktop.
+ */
+function CardFooter({
+  card,
+  messageId,
+  onRegenerate,
+  onSave,
+}: {
+  card: OracleCard
+  messageId: string
+  onRegenerate: (id: string) => void
+  onSave?: () => 'saved' | 'exists' | null
+}) {
+  const isWarning = card.kind === 'warning'
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: ease.smooth }}
+      className={cn(
+        'flex items-center justify-between gap-3 border-t border-border pt-4',
+        isWarning && 'border-transparent',
+      )}
+    >
+      {!isWarning && (
+        <div className="flex items-center gap-1.5 text-[11px] text-faint">
+          <Check size={12} strokeWidth={2.25} className="text-positive" />
+          Read complete
+        </div>
+      )}
+      <MessageActions card={card} messageId={messageId} onRegenerate={onRegenerate} onSave={onSave} />
+    </motion.div>
+  )
+}
+
 /* ------------------------------------------------------------------ */
 /* Analysis — the signature mini-Bloomberg report                      */
 /* ------------------------------------------------------------------ */
 
-function AnalysisCardView({
+const AnalysisCardView = memo(function AnalysisCardView({
   card,
   streaming,
   progress,
+  footer,
 }: {
   card: AnalysisCard
   streaming: boolean
   progress: number
+  footer?: ReactNode
 }) {
   const order = [
     'meta',
@@ -167,16 +319,7 @@ function AnalysisCardView({
         </CardSection>
 
         <CardSection visible={show('r0')} label="Reasoning">
-          <ul className="space-y-2">
-            {card.reasoning.map((point, index) => (
-              <Reveal key={point} visible={show(`r${index}`)}>
-                <li className="flex items-start gap-2.5 text-[13px] leading-relaxed text-foreground/85">
-                  <span aria-hidden className="mt-[7px] size-1 shrink-0 rounded-full bg-tint/[0.35]" />
-                  {point}
-                </li>
-              </Reveal>
-            ))}
-          </ul>
+          <BulletList items={card.reasoning} />
         </CardSection>
 
         <CardSection visible={show('risk')} label="Risk">
@@ -209,16 +352,11 @@ function AnalysisCardView({
           </div>
         </Reveal>
 
-        <Reveal visible={!streaming}>
-          <div className="flex items-center gap-1.5 border-t border-border pt-4 text-[11px] text-faint">
-            <Check size={12} strokeWidth={2.25} className="text-positive" />
-            Read complete
-          </div>
-        </Reveal>
+        {footer}
       </div>
     </GlassCard>
   )
-}
+})
 
 /* ------------------------------------------------------------------ */
 /* Liquidity map                                                       */
@@ -264,14 +402,16 @@ function WallTile({
   )
 }
 
-function LiquidityCardView({
+const LiquidityCardView = memo(function LiquidityCardView({
   card,
   streaming,
   progress,
+  footer,
 }: {
   card: LiquidityCard
   streaming: boolean
   progress: number
+  footer?: ReactNode
 }) {
   const order = ['buy', 'sell', 'largest', 'summary']
   const total = order.length
@@ -298,29 +438,26 @@ function LiquidityCardView({
         <Reveal visible={show('summary')}>
           <p className="text-[13px] leading-relaxed text-foreground/85">{card.summary}</p>
         </Reveal>
-        <Reveal visible={!streaming}>
-          <div className="flex items-center gap-1.5 border-t border-border pt-4 text-[11px] text-faint">
-            <Check size={12} strokeWidth={2.25} className="text-positive" />
-            Read complete
-          </div>
-        </Reveal>
+        {footer}
       </div>
     </GlassCard>
   )
-}
+})
 
 /* ------------------------------------------------------------------ */
 /* Trade setup                                                         */
 /* ------------------------------------------------------------------ */
 
-function TradeSetupCardView({
+const TradeSetupCardView = memo(function TradeSetupCardView({
   card,
   streaming,
   progress,
+  footer,
 }: {
   card: TradeSetupCard
   streaming: boolean
   progress: number
+  footer?: ReactNode
 }) {
   const order = ['stats', 'confidence', ...card.checklist.map((_, index) => `c${index}`)]
   const total = order.length
@@ -378,23 +515,149 @@ function TradeSetupCardView({
             ))}
           </ul>
         </Reveal>
+
+        {footer}
       </div>
     </GlassCard>
   )
-}
+})
+
+/* ------------------------------------------------------------------ */
+/* Comparison — side-by-side read of two assets                        */
+/* ------------------------------------------------------------------ */
+
+const ComparisonCardView = memo(function ComparisonCardView({
+  card,
+  streaming,
+  progress,
+  footer,
+}: {
+  card: ComparisonCard
+  streaming: boolean
+  progress: number
+  footer?: ReactNode
+}) {
+  const order = ['table', 'conclusion']
+  const total = order.length
+  const show = (slot: string) => !streaming || progress >= (order.indexOf(slot) + 1) / total
+
+  return (
+    <GlassCard className="overflow-hidden">
+      <CardHeader
+        icon={ArrowLeftRight}
+        title="Comparison"
+        subtitle={`${card.primary.ticker} vs ${card.secondary.ticker} · ${card.timeframe} window`}
+      />
+      <div className="space-y-5 p-5 sm:p-6">
+        <Reveal visible={show('table')}>
+          {/* Negative margins keep the table flush with the card while
+              it scrolls horizontally on narrow screens. */}
+          <div className="-mx-5 overflow-x-auto px-5 sm:-mx-6 sm:px-6">
+            <table className="w-full min-w-[20rem] border-collapse">
+              <thead>
+                <tr className="border-b border-border">
+                  <th
+                    scope="col"
+                    className="pb-2.5 pr-4 text-left text-[11px] font-medium uppercase tracking-[0.14em] text-faint"
+                  >
+                    Metric
+                  </th>
+                  <th scope="col" className="pb-2.5 pr-4 text-left text-xs font-semibold text-foreground">
+                    {card.primary.ticker}
+                  </th>
+                  <th scope="col" className="pb-2.5 text-left text-xs font-semibold text-foreground">
+                    {card.secondary.ticker}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {card.rows.map((row) => (
+                  <tr key={row.metric} className="border-b border-border/60 last:border-0">
+                    <td className="py-2.5 pr-4 text-[13px] text-muted">{row.metric}</td>
+                    <td className="py-2.5 pr-4 text-[13px] font-medium text-foreground">{row.primary}</td>
+                    <td className="py-2.5 text-[13px] text-foreground/85">{row.secondary}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Reveal>
+
+        <CardSection visible={show('conclusion')} label="Conclusion">
+          <p className="text-[13px] leading-relaxed text-foreground/85">{card.conclusion}</p>
+        </CardSection>
+
+        {footer}
+      </div>
+    </GlassCard>
+  )
+})
+
+/* ------------------------------------------------------------------ */
+/* Market brief — scannable daily read                                 */
+/* ------------------------------------------------------------------ */
+
+const MarketBriefCardView = memo(function MarketBriefCardView({
+  card,
+  streaming,
+  progress,
+  footer,
+}: {
+  card: MarketBriefCard
+  streaming: boolean
+  progress: number
+  footer?: ReactNode
+}) {
+  const order = ['headline', 'happening', 'why', 'watch']
+  const total = order.length
+  const show = (slot: string) => !streaming || progress >= (order.indexOf(slot) + 1) / total
+
+  return (
+    <GlassCard className="overflow-hidden">
+      <CardHeader
+        icon={Newspaper}
+        title="Market Brief"
+        subtitle={`${card.market} · ${card.ticker} · ${card.timeframe} window`}
+      />
+      <div className="space-y-5 p-5 sm:p-6">
+        <Reveal visible={show('headline')}>
+          <p className="text-[15px] font-medium leading-relaxed tracking-tight text-foreground">
+            {card.headline}
+          </p>
+        </Reveal>
+
+        <CardSection visible={show('happening')} label="What's happening">
+          <BulletList items={card.happening} />
+        </CardSection>
+
+        <CardSection visible={show('why')} label="Why it matters">
+          <BulletList items={card.whyItMatters} />
+        </CardSection>
+
+        <CardSection visible={show('watch')} label="What to watch">
+          <BulletList items={card.watch} />
+        </CardSection>
+
+        {footer}
+      </div>
+    </GlassCard>
+  )
+})
 
 /* ------------------------------------------------------------------ */
 /* Educational                                                         */
 /* ------------------------------------------------------------------ */
 
-function EducationalCardView({
+const EducationalCardView = memo(function EducationalCardView({
   card,
   streaming,
   progress,
+  footer,
 }: {
   card: EducationalCard
   streaming: boolean
   progress: number
+  footer?: ReactNode
 }) {
   const order = ['definition', 'example', 'whenToUse', 'mistakes', 'diagram']
   const total = order.length
@@ -441,16 +704,26 @@ function EducationalCardView({
             <p className="text-xs text-faint">Diagram placeholder — renders once live charts land</p>
           </div>
         </Reveal>
+
+        {footer}
       </div>
     </GlassCard>
   )
-}
+})
 
 /* ------------------------------------------------------------------ */
 /* Warning — amber advisory                                            */
 /* ------------------------------------------------------------------ */
 
-function WarningCardView({ card, progress }: { card: WarningCard; progress: number }) {
+const WarningCardView = memo(function WarningCardView({
+  card,
+  progress,
+  footer,
+}: {
+  card: WarningCard
+  progress: number
+  footer?: ReactNode
+}) {
   // Fade in just after the leading card begins streaming, so a follow-up
   // advisory never jumps in ahead of the analysis.
   if (progress < 0.15) return null
@@ -459,18 +732,20 @@ function WarningCardView({ card, progress }: { card: WarningCard; progress: numb
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: ease.smooth }}
-      className="rounded-panel border border-warning/30 bg-warning/[0.07] p-5"
     >
-      <div className="flex items-center gap-2.5">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-warning/30 bg-warning/10">
-          <AlertTriangle size={14} strokeWidth={1.75} className="text-warning" />
-        </span>
-        <p className="text-sm font-semibold tracking-tight text-foreground">{card.title}</p>
+      <div className="rounded-panel border border-warning/30 bg-warning/[0.07] p-5">
+        <div className="flex items-center gap-2.5">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-warning/30 bg-warning/10">
+            <AlertTriangle size={14} strokeWidth={1.75} className="text-warning" />
+          </span>
+          <p className="text-sm font-semibold tracking-tight text-foreground">{card.title}</p>
+        </div>
+        <p className="mt-3 text-[13px] leading-relaxed text-foreground/85">{card.body}</p>
       </div>
-      <p className="mt-3 text-[13px] leading-relaxed text-foreground/85">{card.body}</p>
+      {footer && <div className="mt-2 px-1">{footer}</div>}
     </motion.div>
   )
-}
+})
 
 /* ------------------------------------------------------------------ */
 /* Router                                                              */
@@ -479,9 +754,13 @@ function WarningCardView({ card, progress }: { card: WarningCard; progress: numb
 export function OracleResponseCard({
   message,
   onStreamed,
+  onRegenerate,
+  onSave,
 }: {
   message: OracleMessage
   onStreamed: (id: string) => void
+  onRegenerate: (id: string) => void
+  onSave?: (message: OracleMessage) => 'saved' | 'exists' | null
 }) {
   const card = message.card as OracleCard
   const streaming = message.streaming ?? false
@@ -491,16 +770,35 @@ export function OracleResponseCard({
     if (streaming && progress >= 1) onStreamed(message.id)
   }, [streaming, progress, message.id, onStreamed])
 
+  // Built once per message so memoized card views skip re-renders on
+  // streaming progress frames — only the footer's own mount fades in.
+  const footer = useMemo(
+    () =>
+      !streaming ? (
+        <CardFooter
+          card={card}
+          messageId={message.id}
+          onRegenerate={onRegenerate}
+          onSave={onSave ? () => onSave(message) : undefined}
+        />
+      ) : null,
+    [card, streaming, message.id, onRegenerate, onSave, message],
+  )
+
   switch (card.kind) {
     case 'analysis':
-      return <AnalysisCardView card={card} streaming={streaming} progress={progress} />
+      return <AnalysisCardView card={card} streaming={streaming} progress={progress} footer={footer} />
     case 'liquidity':
-      return <LiquidityCardView card={card} streaming={streaming} progress={progress} />
+      return <LiquidityCardView card={card} streaming={streaming} progress={progress} footer={footer} />
     case 'trade-setup':
-      return <TradeSetupCardView card={card} streaming={streaming} progress={progress} />
+      return <TradeSetupCardView card={card} streaming={streaming} progress={progress} footer={footer} />
+    case 'comparison':
+      return <ComparisonCardView card={card} streaming={streaming} progress={progress} footer={footer} />
+    case 'market-brief':
+      return <MarketBriefCardView card={card} streaming={streaming} progress={progress} footer={footer} />
     case 'educational':
-      return <EducationalCardView card={card} streaming={streaming} progress={progress} />
+      return <EducationalCardView card={card} streaming={streaming} progress={progress} footer={footer} />
     case 'warning':
-      return <WarningCardView card={card} progress={progress} />
+      return <WarningCardView card={card} progress={progress} footer={footer} />
   }
 }

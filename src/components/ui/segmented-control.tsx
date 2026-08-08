@@ -14,6 +14,8 @@ export interface SegmentedControlProps<T extends string> {
   onChange: (value: T) => void
   size?: 'sm' | 'md'
   className?: string
+  /** Accessible group label for the tablist, e.g. "Oracle mode". */
+  'aria-label'?: string
 }
 
 const trackSize = {
@@ -31,6 +33,7 @@ export function SegmentedControl<T extends string>({
   onChange,
   size = 'md',
   className,
+  'aria-label': ariaLabel,
 }: SegmentedControlProps<T>) {
   const thumbId = useId()
   const trackRef = useRef<HTMLDivElement>(null)
@@ -54,6 +57,7 @@ export function SegmentedControl<T extends string>({
     <div
       ref={trackRef}
       role="tablist"
+      aria-label={ariaLabel}
       className={cn(
         'inline-flex items-center rounded-full border border-border bg-tint/[0.04] p-1 backdrop-blur-xl',
         trackSize[size],
@@ -73,7 +77,10 @@ export function SegmentedControl<T extends string>({
             onClick={() => onChange(option.value)}
             onKeyDown={(event) => handleKeyDown(event, index)}
             className={cn(
-              'relative rounded-full px-4 outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-tint/30',
+              // sm tabs carry tighter padding so 7 timeframe options fit
+              // narrow screens; md keeps the roomier px-4.
+              'relative rounded-full outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-tint/30',
+              size === 'sm' ? 'px-3' : 'px-4',
               selected ? 'text-foreground' : 'text-muted hover:text-foreground/80',
             )}
           >
