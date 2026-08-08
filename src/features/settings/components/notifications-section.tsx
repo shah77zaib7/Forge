@@ -19,6 +19,7 @@ export function NotificationsSection() {
         description="Alerts when a watched asset crosses a level you care about."
         control={
           <Toggle
+            id="price-alerts-toggle"
             checked={notifications.priceAlerts}
             onChange={(checked) => set('priceAlerts', checked)}
             aria-label="Price alerts"
@@ -30,6 +31,7 @@ export function NotificationsSection() {
         description="Notices when an asset on your watchlist makes a significant move."
         control={
           <Toggle
+            id="watchlist-alerts-toggle"
             checked={notifications.watchlistAlerts}
             onChange={(checked) => set('watchlistAlerts', checked)}
             aria-label="Watchlist alerts"
@@ -41,6 +43,7 @@ export function NotificationsSection() {
         description="A nudge when a fresh Oracle read is ready for your markets."
         control={
           <Toggle
+            id="oracle-updates-toggle"
             checked={notifications.oracleUpdates}
             onChange={(checked) => set('oracleUpdates', checked)}
             aria-label="Oracle updates"
