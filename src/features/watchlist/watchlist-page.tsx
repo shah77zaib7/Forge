@@ -8,7 +8,9 @@ import { GlassCard } from '@/components/ui/glass-card'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { SelectControl } from '@/components/ui/select-control'
 import { ease } from '@/design/motion'
-import { coins } from '@/features/markets/data'
+import { CoinListSkeleton } from '@/features/markets/components/coin-list'
+import { MarketDataError } from '@/features/markets/components/market-data-states'
+import { useCoins, useMarketData } from '@/store/market-data'
 import { useFavorites } from '@/store/favorites'
 
 import { CoinRow } from './components/coin-row'
@@ -33,6 +35,8 @@ const sortOptions = [
 export function WatchlistPage() {
   const navigate = useNavigate()
   const { favorites, toggleFavorite } = useFavorites()
+  const coins = useCoins()
+  const { loading, stale, error, refresh } = useMarketData()
 
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<SortKey>('marketCap')
@@ -66,10 +70,15 @@ export function WatchlistPage() {
         break
     }
     return sorted
-  }, [favorites, query, sort, filter])
+  }, [coins, favorites, query, sort, filter])
 
   const isEmpty = favorites.size === 0
   const hasNoMatches = !isEmpty && watchCoins.length === 0
+
+  // Market data is loading or unavailable — never show the watchlist as
+  // empty when the feed simply hasn't answered yet.
+  const feedDown = error && coins.length === 0
+  const showSkeleton = !feedDown && loading && coins.length === 0
 
   return (
     <div className="mx-auto max-w-6xl pb-16">
@@ -138,9 +147,14 @@ export function WatchlistPage() {
           <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.14em] text-faint">
             {watchCoins.length} {watchCoins.length === 1 ? 'asset' : 'assets'}
             {query.trim() && ' · filtered'}
+            {stale && ' · Stale'}
           </p>
 
-          {hasNoMatches ? (
+          {showSkeleton ? (
+            <CoinListSkeleton />
+          ) : feedDown ? (
+            <MarketDataError onRetry={refresh} />
+          ) : hasNoMatches ? (
             <GlassCard padding="lg" className="py-12 text-center">
               <p className="text-sm font-medium text-foreground">No matches</p>
               <p className="mt-1 text-xs text-faint">Try a different search or filter.</p>

@@ -1,7 +1,7 @@
-import { coins } from '@/features/markets/data'
 import { formatMarketPrice } from '@/features/markets/lib/format'
 import type { Coin } from '@/features/markets/types'
 import { formatCompact } from '@/lib/format'
+import { getCoins } from '@/store/market-data'
 
 /* ============================================================
    Deterministic mock data for the Coin Workspace.
@@ -220,7 +220,8 @@ export interface MarketStat {
 
 export function marketStats(coin: Coin): MarketStat[] {
   const rand = mulberry32(hashString(`${coin.id}:stats`))
-  const totalCap = coins.reduce((sum, market) => sum + market.marketCap, 0)
+  // Total cap comes from the live universe so derived shares stay real.
+  const totalCap = getCoins().reduce((sum, market) => sum + market.marketCap, 0)
   const maxSupply = coin.supply * (1.05 + rand() * 0.4)
   const fdv = coin.marketCap * (maxSupply / coin.supply)
   const liquidity = coin.volume24h * (0.6 + rand() * 0.5)
@@ -397,13 +398,12 @@ export function newsFor(coin: Coin, count = 4): NewsItem[] {
 }
 
 /* ------------------------------------------------------------------ */
-/* Related markets — top of the universe by cap, stables excluded      */
+/* Related markets — top of the live universe by cap, stables excluded */
 /* ------------------------------------------------------------------ */
 
-const orderedByCap = [...coins].sort((a, b) => b.marketCap - a.marketCap)
-
 export function relatedMarkets(coin: Coin, count = 8): Coin[] {
-  return orderedByCap
+  // The shared universe is ordered by live market cap already.
+  return getCoins()
     .filter((market) => market.id !== coin.id && !market.categories.includes('stable'))
     .slice(0, count)
 }

@@ -1,6 +1,6 @@
 import { History, Trash2 } from 'lucide-react'
 
-import { coins } from '@/features/markets/data'
+import { useCoins } from '@/store/market-data'
 
 import { formatSavedDate } from '../data'
 import type { SavedAnalysis } from '../types'
@@ -21,6 +21,7 @@ interface HistorySheetProps {
  * mobile, right-side panel on desktop. Stored locally on this device.
  */
 export function HistorySheet({ open, onClose, items, onOpen, onDelete }: HistorySheetProps) {
+  const coins = useCoins()
   return (
     <SheetShell
       open={open}

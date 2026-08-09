@@ -1,7 +1,7 @@
-import { coins } from '@/features/markets/data'
 import { formatMarketPrice } from '@/features/markets/lib/format'
 import type { Coin } from '@/features/markets/types'
 import { formatChange } from '@/lib/format'
+import { getCoins } from '@/store/market-data'
 import {
   liquiditySnapshot,
   liquidityTimeframes,
@@ -35,8 +35,10 @@ export const oracleService: OracleService = {
   respond(request) {
     const { userMessage, conversation, mode } = request
     const lower = userMessage.toLowerCase()
-    const hinted = request.coinIdHint ? coins.find((coin) => coin.id === request.coinIdHint) : undefined
-    const mentioned = coinMentions(lower)
+    // The live universe at call time — Oracle analyzes real market data.
+    const universe = getCoins()
+    const hinted = request.coinIdHint ? universe.find((coin) => coin.id === request.coinIdHint) : undefined
+    const mentioned = coinMentions(lower, universe)
     const primary = hinted ?? mentioned[0] ?? conversation.coin
     const hintedTf = request.timeframeIdHint
     const parsedTf = parseTimeframeId(lower)
@@ -50,6 +52,7 @@ export const oracleService: OracleService = {
         mentioned,
         conversation.coin,
         conversation.coin,
+        universe,
       )
       const timeframe = tfId ? timeframeById(tfId) : conversation.timeframe
       return { cards: [buildComparisonCard(a, b, timeframe)], coin: a, timeframe }
@@ -118,10 +121,10 @@ function timeframeById(id: LiquidityTimeframeId): LiquidityTimeframe {
 }
 
 /** All coins mentioned in a prompt, in order of appearance. */
-function coinMentions(text: string): Coin[] {
+function coinMentions(text: string, universe: Coin[]): Coin[] {
   const lower = text.toLowerCase()
   const found: Coin[] = []
-  for (const coin of coins) {
+  for (const coin of universe) {
     const ticker = coin.ticker.toLowerCase()
     const name = coin.name.toLowerCase()
     // Ticker first (compact, unambiguous), then full names (length-gated
@@ -171,6 +174,7 @@ function comparisonPair(
   mentioned: Coin[],
   fallback: Coin,
   conversationCoin: Coin,
+  universe: Coin[],
 ): { primary: Coin; secondary: Coin } {
   const pronoun = /\b(it|this|that|them|there)\b/.test(text) || text.includes('compare with') || text.includes('compare to')
 
@@ -192,7 +196,7 @@ function comparisonPair(
     secondary = conversationCoin
   }
   if (secondary.id === primary.id) {
-    secondary = coins.find((coin) => coin.id !== primary.id) ?? primary
+    secondary = universe.find((coin) => coin.id !== primary.id) ?? primary
   }
   return { primary, secondary }
 }

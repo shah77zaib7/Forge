@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
 
+import { MarketDataLoading } from '@/features/markets/components/market-data-states'
+import { useCoins, useMarketData } from '@/store/market-data'
 import { useFavorites } from '@/store/favorites'
-
-import { coins } from '@/features/markets/data'
 
 import { HeroChart } from './components/hero-chart'
 import { LiquiditySnapshot } from './components/liquidity-snapshot'
@@ -29,6 +29,8 @@ import { DEFAULT_LIQUIDITY_TIMEFRAME, liquidityTimeframes, type LiquidityTimefra
  */
 export function WorkspacePage() {
   const { coinId } = useParams<{ coinId: string }>()
+  const coins = useCoins()
+  const { loading } = useMarketData()
   const coin = coins.find((market) => market.id === coinId)
   const { favorites, toggleFavorite } = useFavorites()
 
@@ -40,6 +42,9 @@ export function WorkspacePage() {
     [timeframeId],
   )
 
+  // Quiet placeholder while the first market load is in flight (deep link
+  // or refresh); only redirect for genuinely unknown assets.
+  if (loading && !coin) return <MarketDataLoading className="mx-auto max-w-6xl pt-4" />
   if (!coin) return <Navigate to="/markets" replace />
 
   const favorited = favorites.has(coin.id)

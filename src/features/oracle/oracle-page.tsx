@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { coins } from '@/features/markets/data'
+import { MarketDataError, MarketDataLoading } from '@/features/markets/components/market-data-states'
 import {
   DEFAULT_LIQUIDITY_TIMEFRAME,
   liquidityTimeframes,
@@ -8,6 +8,7 @@ import {
 } from '@/features/workspace/data'
 
 import type { Coin } from '@/features/markets/types'
+import { useCoins, useMarketData } from '@/store/market-data'
 import { usePreferences } from '@/store/preferences'
 
 import { Conversation } from './components/conversation'
@@ -35,10 +36,12 @@ import type {
  *
  * All responses come from the MockOracleService — a deterministic engine
  * behind the OracleService contract, so a real AI can replace it later
- * without UI changes. Market data is the project's seeded mock feed.
+ * without UI changes. Market data is live, from the shared store.
  */
 export function OraclePage() {
   const { preferences } = usePreferences()
+  const coins = useCoins()
+  const { loading, refresh } = useMarketData()
   const [messages, setMessages] = useState<OracleMessage[]>([])
   const [activeCoinId, setActiveCoinId] = useState('bitcoin')
   // Seed from Settings preferences; a session override persists separately.
@@ -85,8 +88,16 @@ export function OraclePage() {
       liquidityTimeframes.find((tf) => tf.id === DEFAULT_LIQUIDITY_TIMEFRAME)!,
     [timeframeId],
   )
-  const health = useMemo(() => marketHealth(activeCoin, timeframe), [activeCoin, timeframe])
-  const snapshot = useMemo(() => buildMarketContext(activeCoin, timeframe), [activeCoin, timeframe])
+  // activeCoin can be undefined while the first market load is in flight —
+  // the memos stay null-safe and the render guards below take over.
+  const health = useMemo(
+    () => (activeCoin ? marketHealth(activeCoin, timeframe) : null),
+    [activeCoin, timeframe],
+  )
+  const snapshot = useMemo(
+    () => (activeCoin ? buildMarketContext(activeCoin, timeframe) : null),
+    [activeCoin, timeframe],
+  )
   const hasStreaming = messages.some((message) => message.streaming)
 
   /**
@@ -223,7 +234,9 @@ export function OraclePage() {
       persistSavedAnalyses(next)
       return 'saved'
     },
-    [saved, activeCoin.id, timeframe.id, mode],
+    // Optional chaining: deps are evaluated every render, and activeCoin can
+    // still be undefined during the first market load.
+    [saved, activeCoin?.id, timeframe.id, mode],
   )
 
   /** Reopen a saved analysis — restore its asset/window and add the card. */
@@ -256,6 +269,16 @@ export function OraclePage() {
 
   function handlePick(suggestion: Suggestion) {
     send(suggestion.prompt, suggestion.coinId)
+  }
+
+  // No coin to analyze yet — first load or a total feed outage. Never
+  // fabricate an asset to analyze. Past these guards activeCoin is defined,
+  // so the health/snapshot memos above are non-null too.
+  if (loading && !activeCoin) {
+    return <MarketDataLoading className="mx-auto max-w-6xl pt-4" />
+  }
+  if (!activeCoin) {
+    return <MarketDataError onRetry={refresh} className="mx-auto max-w-6xl pt-4" />
   }
 
   return (
@@ -298,7 +321,7 @@ export function OraclePage() {
           coin={activeCoin}
           timeframeId={timeframeId}
           onTimeframeChange={setTimeframeId}
-          health={health}
+          health={health!}
         />
       </div>
 
@@ -306,7 +329,7 @@ export function OraclePage() {
       <MarketContextSheet
         open={contextOpen}
         onClose={() => setContextOpen(false)}
-        snapshot={snapshot}
+        snapshot={snapshot!}
         timeframeId={timeframeId}
         onTimeframeChange={setTimeframeId}
       />

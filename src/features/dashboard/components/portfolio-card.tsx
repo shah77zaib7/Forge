@@ -1,6 +1,7 @@
 import { Wallet } from 'lucide-react'
 
 import { GlassCard } from '@/components/ui/glass-card'
+import { useCoins } from '@/store/market-data'
 import { cn } from '@/lib/cn'
 import { formatChange } from '@/lib/format'
 
@@ -17,7 +18,8 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 /** Portfolio / exposure hero — the account read in one glance. */
 export function PortfolioCard() {
-  const portfolio = portfolioSummary()
+  const coins = useCoins()
+  const portfolio = portfolioSummary(coins)
   const positive = portfolio.change24h >= 0
 
   return (

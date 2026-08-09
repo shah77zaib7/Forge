@@ -8,6 +8,7 @@ import { useMediaQuery } from '@/hooks/use-media-query'
 import { CoinList, CoinListSkeleton } from './components/coin-list'
 import { CoinPreview } from './components/coin-preview'
 import { EmptyState } from './components/empty-state'
+import { MarketDataError } from './components/market-data-states'
 import { FilterChip } from './components/filter-chip'
 import { MobilePreviewSheet } from './components/mobile-preview-sheet'
 import { SearchBar } from './components/search-bar'
@@ -61,6 +62,10 @@ export function MarketsPage() {
     toggleFavorite,
     filtered,
     loading,
+    stale,
+    error,
+    hasData,
+    refresh,
   } = useMarkets()
 
   const activeFilter = marketFilters.find((option) => option.id === filter) ?? marketFilters[0]
@@ -91,13 +96,15 @@ export function MarketsPage() {
 
           <SectionTitle
             title={title}
-            meta={loading ? '…' : `${filtered.length} markets`}
+            meta={loading ? '…' : stale ? `${filtered.length} markets · Stale` : `${filtered.length} markets`}
             className="px-1"
           />
 
           <div className="space-y-1 pb-2 pr-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain">
             {loading ? (
               <CoinListSkeleton />
+            ) : error && !hasData ? (
+              <MarketDataError onRetry={refresh} />
             ) : filtered.length > 0 ? (
               <CoinList
                 coins={filtered}

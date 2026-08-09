@@ -1,6 +1,4 @@
-import { coins } from '@/features/markets/data'
 import type { Coin } from '@/features/markets/types'
-import { formatChange } from '@/lib/format'
 import { loadSavedAnalyses } from '@/features/oracle/services/history'
 import {
   marketStatus,
@@ -10,10 +8,11 @@ import {
 } from '@/features/workspace/data'
 
 /* ============================================================
-   Dashboard mock data — deterministic V1 figures derived from
-   the seeded market feed. Every shape here is the contract a
-   real portfolio/account API will fill later without touching
-   the UI components.
+   Dashboard data contracts + deterministic mock figures for
+   everything except Market Pulse. Market Pulse is the first
+   surface on live data: its types below are the contract the
+   CoinGecko feed fills (see hooks/use-market-pulse.ts) without
+   touching the UI components.
    ============================================================ */
 
 export interface PortfolioSummary {
@@ -33,7 +32,8 @@ export type MarketSentiment = 'Risk-on' | 'Risk-off' | 'Mixed'
 
 export interface MarketPulseData {
   markets: PulseMarket[]
-  btcDominance: number
+  /** BTC's share of total crypto market cap — null when the global feed is unavailable. */
+  btcDominance: number | null
   sentiment: MarketSentiment
   notable: { coin: Coin; headline: string }
 }
@@ -58,11 +58,13 @@ export interface ActivityItem {
   time: string
 }
 
-/** Static mock account — swap for real portfolio data later. */
-export function portfolioSummary(): PortfolioSummary {
+/** Static mock account — swap for real portfolio data later. The 24h P&L
+ *  derives from the live market universe passed in; with no data yet the
+ *  account simply shows a flat day rather than fabricated numbers. */
+export function portfolioSummary(coins: Coin[]): PortfolioSummary {
   const btc = coins.find((coin) => coin.id === 'bitcoin') ?? coins[0]
   const totalValue = 48_250.32
-  const change24hPct = btc.change24h
+  const change24hPct = btc?.change24h ?? 0
   return {
     totalValue,
     change24h: (totalValue * change24hPct) / 100,
@@ -73,30 +75,10 @@ export function portfolioSummary(): PortfolioSummary {
   }
 }
 
-/** The lead tape — BTC, ETH, SOL — plus dominance and sentiment. */
-export function marketPulse(): MarketPulseData {
-  const byId = (id: string) => coins.find((coin) => coin.id === id)
-  const ids = ['bitcoin', 'ethereum', 'solana']
-  const markets = ids
-    .map((id) => byId(id))
-    .filter((coin): coin is Coin => Boolean(coin))
-    .map((coin) => ({ coin }))
-
-  const totalCap = coins.reduce((sum, coin) => sum + coin.marketCap, 0)
-  const btc = markets[0]?.coin
-  const btcDominance = btc ? (btc.marketCap / totalCap) * 100 : 0
-
-  const avgChange = markets.reduce((sum, m) => sum + m.coin.change24h, 0) / Math.max(markets.length, 1)
-  const sentiment: MarketSentiment = avgChange > 1.5 ? 'Risk-on' : avgChange < -1.5 ? 'Risk-off' : 'Mixed'
-
-  const notable = [...coins].sort((a, b) => Math.abs(b.change24h) - Math.abs(a.change24h))[0]
-  const headline = `${notable.name} leads the tape with a ${formatChange(notable.change24h)} move in the last 24 hours.`
-
-  return { markets, btcDominance, sentiment, notable: { coin: notable, headline } }
-}
-
-/** Mock open positions — P/L is computed live against current prices. */
-export function positions(): Position[] {
+/** Mock open positions — entry prices are static account records; P/L is
+ *  computed live against the real market universe passed in. Positions for
+ *  assets with no live quote are dropped rather than shown with fake prices. */
+export function positions(coins: Coin[]): Position[] {
   const byId = (id: string) => coins.find((coin) => coin.id === id)
   const base = [
     { id: 'p1', coinId: 'bitcoin', direction: 'long' as const, entry: 138_900, units: 0.32, risk: 'Low' as const, status: 'Open' as const },

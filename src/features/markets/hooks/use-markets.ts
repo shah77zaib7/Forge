@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
+import { useCoins, useMarketData } from '@/store/market-data'
 import { useFavorites } from '@/store/favorites'
 
-import { coins } from '../data'
 import type { Coin, MarketFilter } from '../types'
 
 export interface UseMarketsResult {
@@ -16,23 +16,25 @@ export interface UseMarketsResult {
   favorites: Set<string>
   toggleFavorite: (id: string) => void
   filtered: Coin[]
+  /** True while the first market load is in flight. */
   loading: boolean
+  /** True when the most recent refresh failed — visible values are stale. */
+  stale: boolean
+  error: string | null
+  /** True once any real quotes have arrived. */
+  hasData: boolean
+  refresh: () => void
 }
 
 export function useMarkets(): UseMarketsResult {
+  const coins = useCoins()
+  const { loading, stale, error, refresh } = useMarketData()
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<MarketFilter>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   // Shared app-wide watchlist (localStorage-backed) so Markets and the
   // Coin Workspace star the same coins.
   const { favorites, toggleFavorite } = useFavorites()
-  const [loading, setLoading] = useState(true)
-
-  // Simulate a short initial fetch so skeletons get a moment to breathe.
-  useEffect(() => {
-    const timer = window.setTimeout(() => setLoading(false), 650)
-    return () => window.clearTimeout(timer)
-  }, [])
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase()
@@ -48,11 +50,11 @@ export function useMarkets(): UseMarketsResult {
       }
       return true
     })
-  }, [query, filter, favorites])
+  }, [coins, query, filter, favorites])
 
   const selected = useMemo(
     () => coins.find((coin) => coin.id === selectedId) ?? null,
-    [selectedId],
+    [coins, selectedId],
   )
 
   const select = (id: string | null) => setSelectedId(id)
@@ -69,5 +71,9 @@ export function useMarkets(): UseMarketsResult {
     toggleFavorite,
     filtered,
     loading,
+    stale,
+    error,
+    hasData: coins.length > 0,
+    refresh,
   }
 }

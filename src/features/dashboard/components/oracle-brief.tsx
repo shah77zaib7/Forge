@@ -5,8 +5,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { GlassCard } from '@/components/ui/glass-card'
 import { ConfidenceMeter } from '@/features/oracle/components/confidence-meter'
-import { coins } from '@/features/markets/data'
 import { SectionTitle } from '@/features/markets/components/section-title'
+import { useCoins } from '@/store/market-data'
 import { usePreferences } from '@/store/preferences'
 import { liquidityTimeframes, type LiquidityTimeframeId } from '@/features/workspace/data'
 
@@ -16,11 +16,24 @@ import { oracleBrief } from '../data'
 export function OracleBrief() {
   const navigate = useNavigate()
   const { preferences } = usePreferences()
+  const coins = useCoins()
   const coin = coins.find((market) => market.id === 'bitcoin') ?? coins[0]
   const timeframe =
     liquidityTimeframes.find(
       (tf) => tf.id === (preferences.defaultAnalysisTimeframe as LiquidityTimeframeId),
     ) ?? liquidityTimeframes[0]
+
+  if (!coin) {
+    return (
+      <GlassCard padding="md" className="flex min-h-72 flex-col">
+        <SectionTitle title="Oracle Brief" meta="—" />
+        <p className="mt-4 text-[13px] leading-relaxed text-muted">
+          Waiting for market data before Oracle can read the tape.
+        </p>
+      </GlassCard>
+    )
+  }
+
   const brief = oracleBrief(coin, timeframe)
 
   return (

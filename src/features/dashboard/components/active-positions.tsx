@@ -5,16 +5,17 @@ import { GlassCard } from '@/components/ui/glass-card'
 import { CoinLogo } from '@/features/markets/components/coin-logo'
 import { SectionTitle } from '@/features/markets/components/section-title'
 import { formatMarketPrice } from '@/features/markets/lib/format'
-import { coins } from '@/features/markets/data'
+import { useCoins } from '@/store/market-data'
 import { cn } from '@/lib/cn'
 
 import { positions } from '../data'
 
 const riskTone = { Low: 'positive', Medium: 'neutral', High: 'negative' } as const
 
-/** Active positions — entry vs current price drives a live mock P/L. */
+/** Active positions — entry vs current real price drives a live P/L. */
 export function ActivePositions() {
-  const rows = positions()
+  const coins = useCoins()
+  const rows = positions(coins)
   const openCount = rows.filter((position) => position.status === 'Open').length
 
   return (
