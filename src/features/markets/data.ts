@@ -20,286 +20,482 @@ export const categoryLabels: Record<CategoryId, string> = {
 }
 
 /* ------------------------------------------------------------------ */
-/* Asset identity registry — NOT market data.                          */
-/*                                                                    */
-/* This is the static shape of Forge's universe: names, brand hues,   */
-/* categories, blurbs and supply fallbacks. It deliberately contains  */
-/* no prices, changes, caps or volumes. All live market values are    */
-/* merged onto these identities by the canonical market-data store    */
-/* (src/store/market-data.tsx), which polls CoinGecko once for the    */
-/* whole app. Registry order is the fallback sort for coins with no   */
-/* live quote yet.                                                    */
+/* Precious-metal logos — inline SVG marks so gold/silver render a    */
+/* recognizable ingot even though the spot-metals feed carries no     */
+/* logo reference. Data URIs keep them dependency-free and offline.   */
 /* ------------------------------------------------------------------ */
 
-export const COIN_REGISTRY: CoinIdentity[] = [
+function svgLogo(body: string): string {
+  return `data:image/svg+xml,${encodeURIComponent(body)}`
+}
+
+const GOLD_LOGO = svgLogo(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="8" y="20" width="48" height="30" rx="5" fill="#E6B800"/><rect x="8" y="20" width="48" height="6" rx="3" fill="#FFDF5C" opacity="0.9"/><text x="32" y="44" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="15" font-weight="bold" fill="#7A5A00">Au</text></svg>',
+)
+
+const SILVER_LOGO = svgLogo(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="8" y="20" width="48" height="30" rx="5" fill="#C6CBD1"/><rect x="8" y="20" width="48" height="6" rx="3" fill="#E3E7EC"/><text x="32" y="44" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="15" font-weight="bold" fill="#4B525A">Ag</text></svg>',
+)
+
+/* ------------------------------------------------------------------ */
+/* Asset registry — Forge's canonical catalog.                        */
+/*                                                                    */
+/* Every asset Forge knows lives here exactly once: stable internal   */
+/* id, display identity, asset class, quote currency, provider        */
+/* symbol and canonical precision. It deliberately contains NO market  */
+/* values — no prices, changes, caps or volumes. Live values are      */
+/* merged onto these identities by the canonical market-data store    */
+/* (src/store/market-data.tsx), which polls the configured providers  */
+/* once for the whole app.                                            */
+/*                                                                    */
+/* dataSource: 'coingecko'  → crypto, fetched and shown live.         */
+/* dataSource: 'goldapi'    → spot metals (XAU/XAG), fetched live,    */
+/*   price only — change/cap/volume/supply stay null and render as    */
+/*   an honest dash.                                                  */
+/* dataSource: 'none'       → registered but no configured feed yet.  */
+/*   Never appears with fabricated values.                            */
+/* ------------------------------------------------------------------ */
+
+export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'bitcoin',
+    tvSymbol: 'BITSTAMP:BTCUSD',
     name: 'Bitcoin',
     ticker: 'BTC',
     supply: 19_750_000,
     categories: ['l1'],
     trending: true,
     color: '#F7931A',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 2,
+    dataSource: 'coingecko',
     blurb:
       'The original digital asset — a store of value secured by the largest and most battle-tested network in the industry.',
   },
   {
     id: 'ethereum',
+    tvSymbol: 'BITSTAMP:ETHUSD',
     name: 'Ethereum',
     ticker: 'ETH',
     supply: 120_400_000,
     categories: ['l1'],
     trending: true,
     color: '#627EEA',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 2,
+    dataSource: 'coingecko',
     blurb:
       'The settlement layer for decentralized finance, smart contracts and the vast majority of on-chain activity.',
   },
   {
     id: 'tether',
+    tvSymbol: 'KRAKEN:USDTUSD',
     name: 'Tether',
     ticker: 'USDT',
     supply: 148_000_000_000,
     categories: ['stable'],
     trending: false,
     color: '#26A17B',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 2,
+    dataSource: 'coingecko',
     blurb:
       'A dollar-pegged stablecoin — the liquidity backbone of most global crypto pairs.',
   },
   {
     id: 'solana',
+    tvSymbol: 'COINBASE:SOLUSD',
     name: 'Solana',
     ticker: 'SOL',
     supply: 474_000_000,
     categories: ['l1'],
     trending: true,
     color: '#9945FF',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 2,
+    dataSource: 'coingecko',
     blurb:
       'A high-throughput layer-1 built for speed — the home of consumer apps and high-frequency markets.',
   },
   {
     id: 'bnb',
-    apiId: 'binancecoin',
+    tvSymbol: 'BINANCE:BNBUSDT',
+    marketSymbol: 'binancecoin',
     name: 'BNB',
     ticker: 'BNB',
     supply: 145_600_000,
     categories: ['l1'],
     trending: false,
     color: '#F3BA2F',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 2,
+    dataSource: 'coingecko',
     blurb:
       'The native asset of the BNB Chain ecosystem — exchange utility, staking and gas all in one.',
   },
   {
     id: 'xrp',
-    apiId: 'ripple',
+    tvSymbol: 'BINANCE:XRPUSDT',
+    marketSymbol: 'ripple',
     name: 'XRP',
     ticker: 'XRP',
     supply: 57_500_000_000,
     categories: ['l1'],
     trending: false,
     color: '#00AAE4',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 4,
+    dataSource: 'coingecko',
     blurb:
       'A payments-focused network built for fast, low-cost cross-border settlement.',
   },
   {
     id: 'usd-coin',
+    tvSymbol: 'KRAKEN:USDCUSD',
     name: 'USD Coin',
     ticker: 'USDC',
     supply: 41_200_000_000,
     categories: ['stable'],
     trending: false,
     color: '#2775CA',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 2,
+    dataSource: 'coingecko',
     blurb:
       'A regulated dollar-pegged stablecoin issued by Circle, redeemable one-for-one.',
   },
   {
     id: 'cardano',
+    tvSymbol: 'BINANCE:ADAUSDT',
     name: 'Cardano',
     ticker: 'ADA',
     supply: 35_900_000_000,
     categories: ['l1'],
     trending: false,
     color: '#0033AD',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 4,
+    dataSource: 'coingecko',
     blurb:
       'A research-driven proof-of-stake network known for its methodical, peer-reviewed upgrades.',
   },
   {
     id: 'dogecoin',
+    tvSymbol: 'BINANCE:DOGEUSDT',
     name: 'Dogecoin',
     ticker: 'DOGE',
     supply: 147_000_000_000,
     categories: ['memes'],
     trending: true,
     color: '#C2A633',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 4,
+    dataSource: 'coingecko',
     blurb:
       'The original meme coin — a friendly community asset with surprising staying power.',
   },
   {
     id: 'avalanche',
-    apiId: 'avalanche-2',
+    tvSymbol: 'BINANCE:AVAXUSDT',
+    marketSymbol: 'avalanche-2',
     name: 'Avalanche',
     ticker: 'AVAX',
     supply: 406_000_000,
     categories: ['l1'],
     trending: false,
     color: '#E84142',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 2,
+    dataSource: 'coingecko',
     blurb:
       'A multi-chain platform built for near-instant finality and enterprise-scale subnets.',
   },
   {
     id: 'shiba-inu',
+    tvSymbol: 'BINANCE:SHIBUSDT',
     name: 'Shiba Inu',
     ticker: 'SHIB',
     supply: 589_000_000_000_000,
     categories: ['memes'],
     trending: false,
     color: '#FFA409',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 8,
+    dataSource: 'coingecko',
     blurb:
       'The self-styled dogecoin killer — an enormous, community-driven meme ecosystem.',
   },
   {
     id: 'polkadot',
+    tvSymbol: 'BINANCE:DOTUSDT',
     name: 'Polkadot',
     ticker: 'DOT',
     supply: 1_520_000_000,
     categories: ['l1'],
     trending: false,
     color: '#E6007A',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 2,
+    dataSource: 'coingecko',
     blurb:
       'A sharded multichain protocol connecting specialized blockchains into one interoperable network.',
   },
   {
     id: 'chainlink',
+    tvSymbol: 'BINANCE:LINKUSDT',
     name: 'Chainlink',
     ticker: 'LINK',
     supply: 630_000_000,
     categories: ['defi'],
     trending: false,
     color: '#2A5ADA',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 2,
+    dataSource: 'coingecko',
     blurb:
       'The industry-standard oracle network feeding real-world data to smart contracts everywhere.',
   },
   {
     id: 'near',
+    tvSymbol: 'BINANCE:NEARUSDT',
     name: 'NEAR Protocol',
     ticker: 'NEAR',
     supply: 1_180_000_000,
     categories: ['l1'],
     trending: false,
     color: '#111111',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 2,
+    dataSource: 'coingecko',
     blurb:
       'A sharded, human-readable layer-1 — fast finality and an interface designed for newcomers.',
   },
   {
     id: 'uniswap',
+    tvSymbol: 'BINANCE:UNIUSDT',
     name: 'Uniswap',
     ticker: 'UNI',
     supply: 600_000_000,
     categories: ['defi'],
     trending: false,
     color: '#FF007A',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 2,
+    dataSource: 'coingecko',
     blurb:
       'The governance token of the largest decentralized exchange — automated liquidity, zero order books.',
   },
   {
     id: 'pepe',
+    tvSymbol: 'BINANCE:PEPEUSDT',
     name: 'Pepe',
     ticker: 'PEPE',
     supply: 420_000_000_000_000,
     categories: ['memes'],
     trending: true,
     color: '#54A552',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 8,
+    dataSource: 'coingecko',
     blurb:
       'A deflationary meme coin honoring an internet legend — fast, chaotic and fiercely loved.',
   },
   {
     id: 'fetch-ai',
+    tvSymbol: 'BINANCE:FETUSDT',
     name: 'Fetch.ai',
     ticker: 'FET',
     supply: 2_580_000_000,
     categories: ['ai'],
     trending: false,
     color: '#06B6D4',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 4,
+    dataSource: 'coingecko',
     blurb:
       'An AI network for autonomous agents — coordination, machine learning and data markets on-chain.',
   },
   {
     id: 'arbitrum',
+    tvSymbol: 'BINANCE:ARBUSDT',
     name: 'Arbitrum',
     ticker: 'ARB',
     supply: 3_500_000_000,
     categories: ['defi'],
     trending: false,
     color: '#12AAFF',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 4,
+    dataSource: 'coingecko',
     blurb:
       'The leading optimistic rollup — scaling Ethereum with low fees and deep DeFi liquidity.',
   },
   {
     id: 'render',
-    apiId: 'render-token',
+    tvSymbol: 'BINANCE:RENDERUSDT',
+    marketSymbol: 'render-token',
     name: 'Render',
     ticker: 'RENDER',
     supply: 520_000_000,
     categories: ['ai'],
     trending: false,
     color: '#8B5CF6',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 2,
+    dataSource: 'coingecko',
     blurb:
       'A distributed GPU marketplace turning idle compute into render power for the AI era.',
   },
   {
     id: 'aave',
+    tvSymbol: 'BINANCE:AAVEUSDT',
     name: 'Aave',
     ticker: 'AAVE',
     supply: 15_000_000,
     categories: ['defi'],
     trending: false,
     color: '#B6509E',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 2,
+    dataSource: 'coingecko',
     blurb:
       'The lending protocol that defined money markets — supply, borrow and earn without intermediaries.',
   },
   {
     id: 'bittensor',
+    tvSymbol: 'BINANCE:TAOUSDT',
     name: 'Bittensor',
     ticker: 'TAO',
     supply: 7_400_000,
     categories: ['ai'],
     trending: false,
     color: '#C2410C',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 2,
+    dataSource: 'coingecko',
     blurb:
       'A decentralized machine-learning network where models are trained, ranked and rewarded on-chain.',
   },
   {
     id: 'dogwifhat',
-    apiId: 'dogwifcoin',
+    tvSymbol: 'BINANCE:WIFUSDT',
+    marketSymbol: 'dogwifcoin',
     name: 'dogwifhat',
     ticker: 'WIF',
     supply: 998_000_000,
     categories: ['memes'],
     trending: false,
     color: '#FFD95E',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 4,
+    dataSource: 'coingecko',
     blurb:
       'A shiba inu wearing a hat — one of the fastest cultural moments in the Solana ecosystem.',
   },
   {
     id: 'worldcoin',
-    apiId: 'worldcoin-wld',
+    tvSymbol: 'BINANCE:WLDUSDT',
+    marketSymbol: 'worldcoin-wld',
     name: 'Worldcoin',
     ticker: 'WLD',
     supply: 790_000_000,
     categories: ['ai'],
     trending: false,
     color: '#3B82F6',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 4,
+    dataSource: 'coingecko',
     blurb:
       'A proof-of-humanity network pairing global identity with an AI-first digital economy.',
   },
   {
     id: 'optimism',
+    tvSymbol: 'BINANCE:OPUSDT',
     name: 'Optimism',
     ticker: 'OP',
     supply: 1_280_000_000,
     categories: ['defi'],
     trending: false,
     color: '#FF0420',
+    assetClass: 'crypto',
+    quoteCurrency: 'USD',
+    decimals: 2,
+    dataSource: 'coingecko',
     blurb:
       'An optimistic rollup on a mission to make Ethereum scalable — cheap, fast and open.',
+  },
+  {
+    id: 'tether-gold',
+    tvSymbol: 'BITFINEX:XAUTUSD',
+    marketSymbol: 'tether-gold',
+    name: 'Tether Gold',
+    ticker: 'XAUT',
+    supply: 612_824,
+    categories: [],
+    trending: false,
+    color: '#C9A227',
+    assetClass: 'tokenized_commodity',
+    quoteCurrency: 'USD',
+    decimals: 2,
+    dataSource: 'coingecko',
+    blurb:
+      'A gold-backed token — each XAUT is backed by physical gold held in Swiss vaults.',
+  },
+  {
+    id: 'gold',
+    tvSymbol: 'OANDA:XAUUSD',
+    marketSymbol: 'xau',
+    logoUrl: GOLD_LOGO,
+    name: 'Gold',
+    ticker: 'XAU',
+    categories: [],
+    trending: false,
+    color: '#D4A017',
+    assetClass: 'commodity',
+    quoteCurrency: 'USD',
+    decimals: 2,
+    dataSource: 'goldapi',
+    blurb:
+      'Spot gold — the classic safe-haven asset, quoted per troy ounce. Live via the spot-metals feed (price only).',
+  },
+  {
+    id: 'silver',
+    tvSymbol: 'OANDA:XAGUSD',
+    marketSymbol: 'xag',
+    logoUrl: SILVER_LOGO,
+    name: 'Silver',
+    ticker: 'XAG',
+    categories: [],
+    trending: false,
+    color: '#9BA1A6',
+    assetClass: 'commodity',
+    quoteCurrency: 'USD',
+    decimals: 2,
+    dataSource: 'goldapi',
+    blurb:
+      'Spot silver — an industrial precious metal with deep safe-haven demand. Live via the spot-metals feed (price only).',
   },
 ]

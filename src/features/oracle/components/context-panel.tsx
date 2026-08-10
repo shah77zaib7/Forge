@@ -5,11 +5,11 @@ import { Badge } from '@/components/ui/badge'
 import { GlassCard } from '@/components/ui/glass-card'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { ease } from '@/design/motion'
-import { CoinLogo } from '@/features/markets/components/coin-logo'
+import { AssetIcon } from '@/features/markets/components/asset-icon'
 import { formatMarketPrice } from '@/features/markets/lib/format'
 import type { Coin } from '@/features/markets/types'
 import { cn } from '@/lib/cn'
-import { formatChange } from '@/lib/format'
+import { changeTone, formatChange } from '@/lib/format'
 import { liquidityTimeframes, type LiquidityTimeframeId, type Tone } from '@/features/workspace/data'
 
 import type { MarketHealth } from '../data'
@@ -30,14 +30,14 @@ function CurrentMarketCard({
   onTimeframeChange: (id: LiquidityTimeframeId) => void
   health: MarketHealth
 }) {
-  const tone = coin.change24h > 0 ? 'positive' : coin.change24h < 0 ? 'negative' : 'neutral'
+  const tone = changeTone(coin.change24h)
 
   return (
     <GlassCard padding="md">
       <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-faint">Current market</p>
 
       <div className="mt-3.5 flex items-center gap-3">
-        <CoinLogo ticker={coin.ticker} color={coin.color} className="size-10 shrink-0" />
+        <AssetIcon ticker={coin.ticker} color={coin.color} className="size-10 shrink-0" />
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-foreground">{coin.name}</p>
           <p className="text-[11px] text-faint">{coin.ticker}</p>

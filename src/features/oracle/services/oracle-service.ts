@@ -476,7 +476,7 @@ function buildTradeSetupCard(ctx: OracleContext): OracleCard {
 }
 
 function buildWarningCard(coin: Coin, timeframe: LiquidityTimeframe): OracleCard {
-  if (Math.abs(coin.change24h) >= 5 || timeframe.volatility >= 2) {
+  if (Math.abs(coin.change24h ?? 0) >= 5 || timeframe.volatility >= 2) {
     return {
       kind: 'warning',
       title: 'High volatility expected',
@@ -492,7 +492,7 @@ function buildWarningCard(coin: Coin, timeframe: LiquidityTimeframe): OracleCard
 
 /** Append a volatility advisory after an analysis when conditions demand it. */
 function volatilityWarning(coin: Coin, timeframe: LiquidityTimeframe): OracleCard | null {
-  if (Math.abs(coin.change24h) < 5 && timeframe.volatility < 2) return null
+  if (Math.abs(coin.change24h ?? 0) < 5 && timeframe.volatility < 2) return null
   return buildWarningCard(coin, timeframe)
 }
 

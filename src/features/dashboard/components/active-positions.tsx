@@ -2,7 +2,7 @@ import { ArrowDownRight, ArrowUpRight } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { GlassCard } from '@/components/ui/glass-card'
-import { CoinLogo } from '@/features/markets/components/coin-logo'
+import { AssetIcon } from '@/features/markets/components/asset-icon'
 import { SectionTitle } from '@/features/markets/components/section-title'
 import { formatMarketPrice } from '@/features/markets/lib/format'
 import { useCoins } from '@/store/market-data'
@@ -52,7 +52,7 @@ export function ActivePositions() {
                 <tr key={position.id} className="border-b border-border/60 last:border-0">
                   <td className="py-3 pr-4">
                     <div className="flex items-center gap-2.5">
-                      <CoinLogo ticker={coin.ticker} color={coin.color} size="sm" className="size-7 text-[10px]" />
+                      <AssetIcon ticker={coin.ticker} color={coin.color} size="sm" className="size-7 text-[10px]" />
                       <span className="text-[13px] font-medium text-foreground">{coin.name}</span>
                     </div>
                   </td>

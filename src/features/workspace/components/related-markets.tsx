@@ -1,11 +1,11 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { CoinLogo } from '@/features/markets/components/coin-logo'
+import { AssetIcon } from '@/features/markets/components/asset-icon'
 import { formatMarketPrice } from '@/features/markets/lib/format'
 import type { Coin } from '@/features/markets/types'
 import { cn } from '@/lib/cn'
-import { formatChange } from '@/lib/format'
+import { changeTone, formatChange } from '@/lib/format'
 
 import { relatedMarkets } from '../data'
 import { SectionHeading } from './section-heading'
@@ -24,8 +24,7 @@ export function RelatedMarkets({ coin }: { coin: Coin }) {
       />
       <div className="-mx-1 mt-4 flex snap-x gap-3 overflow-x-auto overscroll-contain px-1 pb-1">
         {related.map((market) => {
-          const tone =
-            market.change24h > 0 ? 'positive' : market.change24h < 0 ? 'negative' : 'neutral'
+          const tone = changeTone(market.change24h)
           return (
             <button
               key={market.id}
@@ -34,7 +33,7 @@ export function RelatedMarkets({ coin }: { coin: Coin }) {
               className="group flex w-40 shrink-0 snap-start flex-col gap-4 rounded-panel border border-border bg-tint/[0.03] p-4 text-left outline-none transition-all duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:bg-tint/[0.05] focus-visible:ring-2 focus-visible:ring-tint/30"
             >
               <div className="flex items-center gap-2.5">
-                <CoinLogo ticker={market.ticker} color={market.color} size="sm" />
+                <AssetIcon ticker={market.ticker} color={market.color} size="sm" />
                 <div className="min-w-0">
                   <p className="truncate text-xs font-medium text-foreground">{market.name}</p>
                   <p className="font-mono text-[10px] uppercase text-faint">{market.ticker}</p>

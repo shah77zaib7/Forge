@@ -4,33 +4,12 @@ import { formatCompact } from '@/lib/format'
 import { getCoins } from '@/store/market-data'
 
 /* ============================================================
-   Deterministic mock data for the Coin Workspace.
-   Every figure derives from the coin itself via a seeded RNG,
-   so the same coin always renders the same "market" — no jitter
-   across navigations, and no live APIs yet.
+   Workspace analytics. The hero chart now renders real OHLC
+   candles from the configured provider (see services/history.ts);
+   the remaining surfaces (status, oracle, depth, news) are seeded
+   models that shape their reads around the coin's real spot price
+   — the analytics/visualization layer, not market data.
    ============================================================ */
-
-export type TimeframeId = '1H' | '4H' | '1D' | '1W' | '1M' | 'YTD' | 'ALL'
-
-export interface Timeframe {
-  id: TimeframeId
-  /** Sample count for the mock series. */
-  points: number
-  /** Per-sample volatility — grows with the window. */
-  volatility: number
-  /** Scales the coin's 24h volume into this window's volume figure. */
-  volumeFactor: number
-}
-
-export const timeframes: Timeframe[] = [
-  { id: '1H', points: 60, volatility: 0.002, volumeFactor: 0.05 },
-  { id: '4H', points: 96, volatility: 0.004, volumeFactor: 0.2 },
-  { id: '1D', points: 96, volatility: 0.005, volumeFactor: 1 },
-  { id: '1W', points: 168, volatility: 0.012, volumeFactor: 6.5 },
-  { id: '1M', points: 120, volatility: 0.02, volumeFactor: 27 },
-  { id: 'YTD', points: 160, volatility: 0.035, volumeFactor: 190 },
-  { id: 'ALL', points: 200, volatility: 0.06, volumeFactor: 460 },
-]
 
 /* ------------------------------------------------------------------ */
 /* Seeded RNG                                                          */
@@ -53,42 +32,6 @@ function mulberry32(seed: number) {
     let t = Math.imul(a ^ (a >>> 15), 1 | a)
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/* Chart — a seeded log-return walk that ends exactly at spot price    */
-/* ------------------------------------------------------------------ */
-
-export function chartSeries(coin: Coin, timeframe: Timeframe): number[] {
-  const rand = mulberry32(hashString(`${coin.id}:${timeframe.id}`))
-  const stepDrift = (coin.change24h / 100) * timeframe.volatility * 0.9
-  const logs: number[] = []
-  let log = 0
-  for (let i = 0; i < timeframe.points; i++) {
-    log += (rand() - 0.48) * timeframe.volatility * 2 + stepDrift
-    logs.push(log)
-  }
-  const end = logs[logs.length - 1]
-  return logs.map((value) => coin.price * Math.exp(value - end))
-}
-
-export interface Ohlcv {
-  high: number
-  low: number
-  open: number
-  close: number
-  volume: number
-}
-
-export function ohlcv(coin: Coin, timeframe: Timeframe, series: number[]): Ohlcv {
-  const rand = mulberry32(hashString(`${coin.id}:${timeframe.id}:ohlcv`))
-  return {
-    high: Math.max(...series) * (1 + rand() * 0.0015),
-    low: Math.min(...series) * (1 - rand() * 0.0015),
-    open: series[0],
-    close: coin.price,
-    volume: coin.volume24h * timeframe.volumeFactor * (0.85 + rand() * 0.3),
   }
 }
 
@@ -121,7 +64,7 @@ export const oracleInputs = [
  */
 export function windowReturn(coin: Coin, timeframe: LiquidityTimeframe): number {
   const rand = mulberry32(hashString(`${coin.id}:window:${timeframe.id}`))
-  return coin.change24h * timeframe.returnFactor + (rand() - 0.5) * timeframe.volatility * 1.6
+  return (coin.change24h ?? 0) * timeframe.returnFactor + (rand() - 0.5) * timeframe.volatility * 1.6
 }
 
 export function oracleAssessment(coin: Coin, timeframe: LiquidityTimeframe): OracleAssessment {
@@ -199,8 +142,7 @@ export function marketStatus(coin: Coin, timeframe: LiquidityTimeframe): MarketS
 
   const bias =
     score > 0.9 && volume === 'Above Average'
-      ? 'Breakout'
-      : Math.abs(change) > 0.15 && change * coin.change24h < 0
+      ? 'Breakout'        : Math.abs(change) > 0.15 && change * (coin.change24h ?? 0) < 0
         ? 'Reversal'
         : Math.abs(change) < 0.15
           ? 'Range'
@@ -220,13 +162,38 @@ export interface MarketStat {
 
 export function marketStats(coin: Coin): MarketStat[] {
   const rand = mulberry32(hashString(`${coin.id}:stats`))
+  // Price-only assets (spot metals) have no cap/volume/supply/change —
+  // show honest dashes rather than fabricating figures from nulls.
+  if (
+    coin.marketCap === null ||
+    coin.volume24h === null ||
+    coin.supply === null ||
+    coin.change24h === null
+  ) {
+    return [
+      { label: 'Market Cap', value: '—' },
+      { label: 'FDV', value: '—' },
+      { label: 'Volume 24h', value: '—' },
+      { label: 'Liquidity', value: '—' },
+      { label: 'Circulating Supply', value: '—' },
+      { label: 'Max Supply', value: '—' },
+      { label: 'Dominance', value: '—' },
+      { label: 'Volatility 24h', value: '—' },
+      { label: '24h High', value: '—' },
+      { label: '24h Low', value: '—' },
+      { label: 'Prev Close', value: '—' },
+    ]
+  }
   // Total cap comes from the live universe so derived shares stay real.
-  const totalCap = getCoins().reduce((sum, market) => sum + market.marketCap, 0)
+  const totalCap = getCoins().reduce((sum, market) => sum + (market.marketCap ?? 0), 0)
   const maxSupply = coin.supply * (1.05 + rand() * 0.4)
   const fdv = coin.marketCap * (maxSupply / coin.supply)
   const liquidity = coin.volume24h * (0.6 + rand() * 0.5)
   const dominance = (coin.marketCap / totalCap) * 100
   const volatility = Math.max(0.4, Math.abs(coin.change24h) * (0.7 + rand() * 0.6))
+  // Previous close is derived exactly from the live price and 24h change:
+  // price = prevClose * (1 + change/100). Real math on real data.
+  const prevClose = coin.price / (1 + coin.change24h / 100)
 
   return [
     { label: 'Market Cap', value: `$${formatCompact(coin.marketCap)}` },
@@ -237,6 +204,15 @@ export function marketStats(coin: Coin): MarketStat[] {
     { label: 'Max Supply', value: `${formatCompact(maxSupply)} ${coin.ticker}` },
     { label: 'Dominance', value: `${dominance.toFixed(1)}%` },
     { label: 'Volatility 24h', value: `${volatility.toFixed(1)}%` },
+    {
+      label: '24h High',
+      value: coin.high24h === null ? '—' : `$${formatMarketPrice(coin.high24h)}`,
+    },
+    {
+      label: '24h Low',
+      value: coin.low24h === null ? '—' : `$${formatMarketPrice(coin.low24h)}`,
+    },
+    { label: 'Prev Close', value: `$${formatMarketPrice(prevClose)}` },
   ]
 }
 
@@ -301,8 +277,13 @@ export function liquiditySnapshot(coin: Coin, timeframe: LiquidityTimeframe): Li
   const sellDistance = timeframe.volatility * (0.55 + rand() * 0.8)
   const buyPrice = spot * (1 - buyDistance / 100)
   const sellPrice = spot * (1 + sellDistance / 100)
-  const buyDepth = coin.volume24h * timeframe.sizeFactor * (0.004 + rand() * 0.007)
-  const sellDepth = coin.volume24h * timeframe.sizeFactor * (0.0035 + rand() * 0.006)
+  const buyDepth = (coin.volume24h ?? 0) * timeframe.sizeFactor * (0.004 + rand() * 0.007)
+  const sellDepth = (coin.volume24h ?? 0) * timeframe.sizeFactor * (0.0035 + rand() * 0.006)
+  // Price-only assets (spot metals) have no volume — omit the fabricated
+  // "size" figure rather than showing a $0 depth.
+  const hasVolume = coin.volume24h !== null
+  const buyDetails = hasVolume ? [{ label: 'Size', value: `$${formatCompact(buyDepth)}` }] : undefined
+  const sellDetails = hasVolume ? [{ label: 'Size', value: `$${formatCompact(sellDepth)}` }] : undefined
 
   // Levels stay coherent with the book — support below the buy wall,
   // resistance above the sell wall.
@@ -316,7 +297,7 @@ export function liquiditySnapshot(coin: Coin, timeframe: LiquidityTimeframe): Li
       value: formatMarketPrice(buyPrice),
       caption: `${formatDistance(buyDistance)} below spot`,
       tone: 'neutral',
-      details: [{ label: 'Size', value: `$${formatCompact(buyDepth)}` }],
+      details: buyDetails,
     },
     {
       label: 'Nearest Sell Liquidity',
@@ -324,7 +305,7 @@ export function liquiditySnapshot(coin: Coin, timeframe: LiquidityTimeframe): Li
       value: formatMarketPrice(sellPrice),
       caption: `${formatDistance(sellDistance)} above spot`,
       tone: 'neutral',
-      details: [{ label: 'Size', value: `$${formatCompact(sellDepth)}` }],
+      details: sellDetails,
     },
     {
       label: 'Strong Support',

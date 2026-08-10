@@ -5,7 +5,8 @@ import { formatChange } from '@/lib/format'
 
 import { formatMarketPrice } from '../lib/format'
 import type { Coin } from '../types'
-import { CoinLogo } from './coin-logo'
+import { changeTone } from '@/lib/format'
+import { AssetIcon } from './asset-icon'
 
 interface CoinPeekProps {
   coin: Coin
@@ -28,7 +29,7 @@ interface CoinPeekProps {
  */
 export function CoinPeek({ coin, side, x }: CoinPeekProps) {
   const next = side === 'next'
-  const tone = coin.change24h > 0 ? 'positive' : coin.change24h < 0 ? 'negative' : 'neutral'
+  const tone = changeTone(coin.change24h)
 
   return (
     <motion.div
@@ -47,7 +48,7 @@ export function CoinPeek({ coin, side, x }: CoinPeekProps) {
           next ? 'rounded-l-2xl border-r-0' : 'flex-row-reverse rounded-r-2xl border-l-0',
         )}
       >
-        <CoinLogo ticker={coin.ticker} color={coin.color} size="sm" />
+        <AssetIcon ticker={coin.ticker} color={coin.color} size="sm" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-xs font-medium text-foreground">{coin.name}</p>
           <p className="mt-0.5 font-mono text-[11px] uppercase text-faint">{coin.ticker}</p>

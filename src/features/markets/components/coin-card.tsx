@@ -6,7 +6,8 @@ import { formatChange } from '@/lib/format'
 
 import { formatMarketPrice } from '../lib/format'
 import type { Coin } from '../types'
-import { CoinLogo } from './coin-logo'
+import { changeTone } from '@/lib/format'
+import { AssetIcon } from './asset-icon'
 import { StarButton } from './star-button'
 
 interface CoinCardProps {
@@ -32,7 +33,7 @@ export function CoinCard({ coin, selected, onSelect, favorited, onToggleFavorite
     }
   }
 
-  const tone = coin.change24h > 0 ? 'positive' : coin.change24h < 0 ? 'negative' : 'neutral'
+  const tone = changeTone(coin.change24h)
 
   return (
     <div
@@ -48,7 +49,7 @@ export function CoinCard({ coin, selected, onSelect, favorited, onToggleFavorite
           : 'border-transparent hover:border-border hover:bg-tint/[0.04]',
       )}
     >
-      <CoinLogo ticker={coin.ticker} color={coin.color} size="sm" />
+      <AssetIcon ticker={coin.ticker} color={coin.color} size="sm" />
 
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground">{coin.name}</p>

@@ -5,10 +5,11 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { GlassCard } from '@/components/ui/glass-card'
 import { Sparkline } from '@/components/ui/sparkline'
 import { ease } from '@/design/motion'
-import { CoinLogo } from '@/features/markets/components/coin-logo'
+import { AssetIcon } from '@/features/markets/components/asset-icon'
 import type { Coin } from '@/features/markets/types'
 import type { LiquidityTimeframeId } from '@/features/workspace/data'
 import { cn } from '@/lib/cn'
+import { changeTone } from '@/lib/format'
 
 import { getGreeting, suggestions, THINK_STEPS } from '../data'
 import type { OracleMessage, OracleMode, Suggestion } from '../types'
@@ -100,13 +101,7 @@ function EmptyState({
 /* ------------------------------------------------------------------ */
 
 function UserMessage({ text, time, chart }: { text: string; time: string; chart?: Coin }) {
-  const chartTone: 'positive' | 'negative' | 'neutral' = chart
-    ? chart.change24h > 0
-      ? 'positive'
-      : chart.change24h < 0
-        ? 'negative'
-        : 'neutral'
-    : 'neutral'
+  const chartTone: 'positive' | 'negative' | 'neutral' = chart ? changeTone(chart.change24h) : 'neutral'
 
   return (
     <motion.div
@@ -119,7 +114,7 @@ function UserMessage({ text, time, chart }: { text: string; time: string; chart?
         <p className="text-sm leading-relaxed text-foreground/90">{text}</p>
         {chart && (
           <div className="mt-2.5 flex items-center gap-2.5 rounded-panel border border-border bg-tint/[0.03] px-2.5 py-2">
-            <CoinLogo ticker={chart.ticker} color={chart.color} size="sm" className="size-6 text-[10px]" />
+            <AssetIcon ticker={chart.ticker} color={chart.color} size="sm" className="size-6 text-[10px]" />
             <Sparkline data={chart.spark} width={72} height={24} tone={chartTone} />
             <span className="text-[10px] font-medium text-faint">{chart.ticker} · chart</span>
           </div>

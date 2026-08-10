@@ -22,6 +22,12 @@ export interface CoinGeckoQuote {
   volume24hUsd: number | null
   /** Circulating supply — null when absent from a partial response. */
   supply: number | null
+  /** Official logo URL (CoinGecko CDN) — null when absent from a partial response. */
+  logoUrl: string | null
+  /** 24h high in USD — null when absent from a partial response. */
+  high24hUsd: number | null
+  /** 24h low in USD — null when absent from a partial response. */
+  low24hUsd: number | null
   /** Downsampled 7-day price series for the mini sparkline. */
   spark: number[]
   /** Epoch ms when the quote was fetched. */
@@ -34,10 +40,9 @@ export interface CoinGeckoGlobal {
   updatedAt: number
 }
 
-const BASE_URL = 'https://api.coingecko.com/api/v3'
+import { fetchJson } from './http'
 
-/** Requests fail fast instead of hanging the poll loop. */
-const REQUEST_TIMEOUT_MS = 10_000
+const BASE_URL = 'https://api.coingecko.com/api/v3'
 
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value)
@@ -45,32 +50,6 @@ const isFiniteNumber = (value: unknown): value is number =>
 /** Normalize an unknown value into a finite number, or null. */
 function toFiniteNumber(value: unknown): number | null {
   return isFiniteNumber(value) ? value : null
-}
-
-/**
- * Fetch and parse a JSON payload with a hard timeout. The caller's signal is
- * bridged into an internal controller so either side can cancel the request.
- */
-async function fetchJson(url: string, signal?: AbortSignal): Promise<unknown> {
-  const controller = new AbortController()
-  const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
-  const onAbort = () => controller.abort()
-  if (signal?.aborted) {
-    controller.abort()
-  } else {
-    signal?.addEventListener('abort', onAbort)
-  }
-
-  try {
-    const response = await fetch(url, { signal: controller.signal })
-    if (!response.ok) {
-      throw new Error(`Market feed request failed (${response.status})`)
-    }
-    return await response.json()
-  } finally {
-    window.clearTimeout(timer)
-    signal?.removeEventListener('abort', onAbort)
-  }
 }
 
 /** Keep a bounded, evenly spaced series — first and last points included. */
@@ -101,6 +80,9 @@ function parseQuote(item: unknown): CoinGeckoQuote | null {
     toFiniteNumber(record.price_change_percentage_24h_in_currency) ??
     toFiniteNumber(record.price_change_percentage_24h)
   const marketCap = toFiniteNumber(record.market_cap)
+  const logoUrl = typeof record.image === 'string' && record.image.length > 0 ? record.image : null
+  const high24h = toFiniteNumber(record.high_24h)
+  const low24h = toFiniteNumber(record.low_24h)
 
   if (!id || !name || !symbol || price === null || change === null || marketCap === null) {
     return null
@@ -115,6 +97,9 @@ function parseQuote(item: unknown): CoinGeckoQuote | null {
     marketCapUsd: marketCap,
     volume24hUsd: toFiniteNumber(record.total_volume),
     supply: toFiniteNumber(record.circulating_supply),
+    logoUrl,
+    high24hUsd: high24h,
+    low24hUsd: low24h,
     spark: parseSpark(record.sparkline_in_7d),
     updatedAt: Date.now(),
   }

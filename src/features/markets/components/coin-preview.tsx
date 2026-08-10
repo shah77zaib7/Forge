@@ -13,7 +13,8 @@ import { formatChange, formatCompact } from '@/lib/format'
 import { categoryLabels } from '../data'
 import { formatMarketPrice } from '../lib/format'
 import type { Coin } from '../types'
-import { CoinLogo } from './coin-logo'
+import { changeTone } from '@/lib/format'
+import { AssetIcon } from './asset-icon'
 import { SectionTitle } from './section-title'
 import { StarButton } from './star-button'
 
@@ -75,14 +76,14 @@ export function CoinPreview({
 }: CoinPreviewProps) {
   const navigate = useNavigate()
   const sheet = variant === 'sheet'
-  const tone = coin.change24h > 0 ? 'positive' : coin.change24h < 0 ? 'negative' : 'neutral'
+  const tone = changeTone(coin.change24h)
 
   const content = (
     <>
       {/* Identity */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-4">
-          <CoinLogo ticker={coin.ticker} color={coin.color} size="lg" />
+          <AssetIcon ticker={coin.ticker} color={coin.color} size="lg" />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h2
@@ -157,7 +158,10 @@ export function CoinPreview({
       >
         <Stat label="Market Cap" value={`$${formatCompact(coin.marketCap)}`} />
         <Stat label="Volume 24h" value={`$${formatCompact(coin.volume24h)}`} />
-        <Stat label="Circulating" value={`${formatCompact(coin.supply)} ${coin.ticker}`} />
+        <Stat
+          label="Circulating"
+          value={coin.supply === null ? '—' : `${formatCompact(coin.supply)} ${coin.ticker}`}
+        />
       </div>
 
       {/* About */}

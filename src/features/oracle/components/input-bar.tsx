@@ -2,11 +2,12 @@ import { motion } from 'framer-motion'
 import { ArrowUp, CandlestickChart, History, Mic, SlidersHorizontal, X } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 
-import { CoinLogo } from '@/features/markets/components/coin-logo'
+import { AssetIcon } from '@/features/markets/components/asset-icon'
 import type { Coin } from '@/features/markets/types'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Sparkline } from '@/components/ui/sparkline'
 import { cn } from '@/lib/cn'
+import { changeTone } from '@/lib/format'
 
 import type { OracleMode } from '../types'
 
@@ -40,8 +41,7 @@ function voicePhrases(coin: Coin): string[] {
   ]
 }
 
-const toneOf = (coin: Coin): 'positive' | 'negative' | 'neutral' =>
-  coin.change24h > 0 ? 'positive' : coin.change24h < 0 ? 'negative' : 'neutral'
+const toneOf = (coin: Coin): 'positive' | 'negative' | 'neutral' => changeTone(coin.change24h)
 
 /**
  * The floating glass composer — pinned to the bottom of the conversation.
@@ -189,7 +189,7 @@ export function InputBar({
             transition={{ duration: 0.25 }}
             className="mb-1.5 flex items-center gap-2 rounded-full border border-border bg-tint/[0.04] px-2.5 py-1.5"
           >
-            <CoinLogo ticker={attachment.ticker} color={attachment.color} size="sm" className="size-5 text-[9px]" />
+            <AssetIcon ticker={attachment.ticker} color={attachment.color} size="sm" className="size-5 text-[9px]" />
             <span className="text-[11px] font-medium text-foreground">{attachment.name}</span>
             <Sparkline
               data={attachment.spark}

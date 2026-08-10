@@ -39,12 +39,12 @@ export function useMarketPulse(): UseMarketPulseResult {
     if (markets.length === 0) return null
 
     const avgChange =
-      markets.reduce((sum, { coin }) => sum + coin.change24h, 0) / markets.length
+      markets.reduce((sum, { coin }) => sum + (coin.change24h ?? 0), 0) / markets.length
     const sentiment: MarketSentiment =
       avgChange > 1.5 ? 'Risk-on' : avgChange < -1.5 ? 'Risk-off' : 'Mixed'
 
     const notable = [...coins].sort(
-      (a, b) => Math.abs(b.change24h) - Math.abs(a.change24h),
+      (a, b) => Math.abs(b.change24h ?? 0) - Math.abs(a.change24h ?? 0),
     )[0]
     if (!notable) return null
 

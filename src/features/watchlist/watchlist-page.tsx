@@ -46,8 +46,8 @@ export function WatchlistPage() {
     const normalized = query.trim().toLowerCase()
     const list = coins.filter((coin) => {
       if (!favorites.has(coin.id)) return false
-      if (filter === 'gainers' && coin.change24h <= 0) return false
-      if (filter === 'losers' && coin.change24h >= 0) return false
+      if (filter === 'gainers' && (coin.change24h ?? 0) <= 0) return false
+      if (filter === 'losers' && (coin.change24h ?? 0) >= 0) return false
       if (normalized && !`${coin.name} ${coin.ticker}`.toLowerCase().includes(normalized)) return false
       return true
     })
@@ -60,13 +60,13 @@ export function WatchlistPage() {
         sorted.sort((a, b) => b.price - a.price)
         break
       case 'change':
-        sorted.sort((a, b) => b.change24h - a.change24h)
+        sorted.sort((a, b) => (b.change24h ?? 0) - (a.change24h ?? 0))
         break
       case 'volume':
-        sorted.sort((a, b) => b.volume24h - a.volume24h)
+        sorted.sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0))
         break
       case 'marketCap':
-        sorted.sort((a, b) => b.marketCap - a.marketCap)
+        sorted.sort((a, b) => (b.marketCap ?? 0) - (a.marketCap ?? 0))
         break
     }
     return sorted

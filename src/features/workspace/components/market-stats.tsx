@@ -16,7 +16,9 @@ export function MarketStats({ coin }: { coin: Coin }) {
       <SectionHeading
         eyebrow="03 — Fundamentals"
         title="Market stats"
-        meta={<span className="font-mono text-[11px] text-faint">8 metrics</span>}
+        meta={
+          <span className="font-mono text-[11px] text-faint">{stats.length} metrics</span>
+        }
       />
       <GlassCard className="mt-4">
         <div className="grid grid-cols-2 gap-x-6 gap-y-7 p-6 sm:grid-cols-4 lg:grid-cols-2">

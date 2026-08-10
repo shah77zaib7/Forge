@@ -3,12 +3,12 @@ import type { KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { Sparkline } from '@/components/ui/sparkline'
-import { CoinLogo } from '@/features/markets/components/coin-logo'
+import { AssetIcon } from '@/features/markets/components/asset-icon'
 import { StarButton } from '@/features/markets/components/star-button'
 import { formatMarketPrice } from '@/features/markets/lib/format'
 import type { Coin } from '@/features/markets/types'
 import { cn } from '@/lib/cn'
-import { formatChange } from '@/lib/format'
+import { changeTone, formatChange } from '@/lib/format'
 
 interface CoinRowProps {
   coin: Coin
@@ -27,7 +27,7 @@ interface CoinRowProps {
  */
 export function CoinRow({ coin, favorited, onToggleFavorite, showStar = true, dense = false }: CoinRowProps) {
   const navigate = useNavigate()
-  const tone = coin.change24h > 0 ? 'positive' : coin.change24h < 0 ? 'negative' : 'neutral'
+  const tone = changeTone(coin.change24h)
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     // Ignore keys aimed at nested interactive elements (the star).
@@ -50,7 +50,7 @@ export function CoinRow({ coin, favorited, onToggleFavorite, showStar = true, de
         'border-transparent hover:border-border hover:bg-tint/[0.04]',
       )}
     >
-      <CoinLogo ticker={coin.ticker} color={coin.color} size="sm" />
+      <AssetIcon ticker={coin.ticker} color={coin.color} size="sm" />
 
       <div className="min-w-0 flex-1">
         <p className="truncate text-[13px] font-medium text-foreground">{coin.name}</p>

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react'
 
-import { COIN_REGISTRY } from '@/features/markets/data'
+import { ASSET_REGISTRY } from '@/features/markets/data'
 import {
   fetchCoinGeckoGlobal,
   fetchCoinGeckoQuotes,
   type CoinGeckoQuote,
 } from '@/features/markets/services/coingecko'
+import { fetchMetalQuotes, type MetalQuote } from '@/features/markets/services/metals'
 import type { Coin, CoinIdentity } from '@/features/markets/types'
 
 export interface MarketDataSnapshot {
@@ -29,7 +30,16 @@ export interface MarketDataSnapshot {
 
 const REFRESH_INTERVAL_MS = 60_000
 
-const ALL_COIN_IDS = COIN_REGISTRY.map((coin) => coin.apiId ?? coin.id)
+// Only assets with a configured live feed are fetched. Registry-only assets
+// (dataSource 'none') are never requested and never shown with fabricated
+// values. Crypto and spot metals come from separate providers and get their
+// own request sets, each merged onto the same registry identities.
+const CRYPTO_IDS = ASSET_REGISTRY.filter((asset) => asset.dataSource === 'coingecko').map(
+  (asset) => asset.marketSymbol ?? asset.id,
+)
+const METAL_SYMBOLS = ASSET_REGISTRY.filter((asset) => asset.dataSource === 'goldapi').map(
+  (asset) => (asset.marketSymbol ?? asset.id).toUpperCase(),
+)
 
 /* ------------------------------------------------------------------ */
 /* Module store — Forge's single source of truth for market data.      */
@@ -96,16 +106,19 @@ export function refreshMarketData(): void {
 /* ------------------------------------------------------------------ */
 
 function mergeQuotes(previous: Coin[], quotes: CoinGeckoQuote[]): Coin[] {
-  // Match quotes to the registry by CoinGecko id; keep the stable internal id.
-  const identityByApiId = new Map<string, { identity: CoinIdentity; internalId: string }>()
-  for (const identity of COIN_REGISTRY) {
-    identityByApiId.set(identity.apiId ?? identity.id, { identity, internalId: identity.id })
+  // Match quotes to the registry by provider symbol; keep the stable internal id.
+  const identityByMarketSymbol = new Map<string, { identity: CoinIdentity; internalId: string }>()
+  for (const identity of ASSET_REGISTRY) {
+    identityByMarketSymbol.set(identity.marketSymbol ?? identity.id, {
+      identity,
+      internalId: identity.id,
+    })
   }
   const merged = new Map<string, Coin>()
   for (const coin of previous) merged.set(coin.id, coin)
 
   for (const quote of quotes) {
-    const entry = identityByApiId.get(quote.id)
+    const entry = identityByMarketSymbol.get(quote.id)
     if (!entry) continue
     const { identity, internalId } = entry
     const lastKnown = merged.get(internalId)
@@ -114,15 +127,23 @@ function mergeQuotes(previous: Coin[], quotes: CoinGeckoQuote[]): Coin[] {
       name: quote.name || identity.name,
       ticker: quote.symbol || identity.ticker,
       price: quote.priceUsd,
-      change24h: quote.change24hPct,
-      marketCap: quote.marketCapUsd,
-      volume24h: quote.volume24hUsd ?? lastKnown?.volume24h ?? 0,
-      supply: quote.supply ?? identity.supply,
+      change24h: quote.change24hPct ?? lastKnown?.change24h ?? null,
+      marketCap: quote.marketCapUsd ?? lastKnown?.marketCap ?? null,
+      volume24h: quote.volume24hUsd ?? lastKnown?.volume24h ?? null,
+      supply: quote.supply ?? identity.supply ?? lastKnown?.supply ?? null,
+      high24h: quote.high24hUsd ?? lastKnown?.high24h ?? null,
+      low24h: quote.low24hUsd ?? lastKnown?.low24h ?? null,
       categories: identity.categories,
       trending: identity.trending,
       color: identity.color,
       spark: quote.spark,
       blurb: identity.blurb,
+      logoUrl: quote.logoUrl ?? lastKnown?.logoUrl,
+      assetClass: identity.assetClass,
+      quoteCurrency: identity.quoteCurrency,
+      decimals: identity.decimals,
+      dataSource: identity.dataSource,
+      tvSymbol: identity.tvSymbol,
     })
   }
 
@@ -130,7 +151,7 @@ function mergeQuotes(previous: Coin[], quotes: CoinGeckoQuote[]): Coin[] {
   // last-known stragglers in registry order.
   const ordered: Coin[] = []
   for (const quote of quotes) {
-    const entry = identityByApiId.get(quote.id)
+    const entry = identityByMarketSymbol.get(quote.id)
     if (entry) {
       const coin = merged.get(entry.internalId)
       if (coin) {
@@ -139,7 +160,7 @@ function mergeQuotes(previous: Coin[], quotes: CoinGeckoQuote[]): Coin[] {
       }
     }
   }
-  for (const identity of COIN_REGISTRY) {
+  for (const identity of ASSET_REGISTRY) {
     const coin = merged.get(identity.id)
     if (coin) {
       ordered.push(coin)
@@ -147,6 +168,54 @@ function mergeQuotes(previous: Coin[], quotes: CoinGeckoQuote[]): Coin[] {
     }
   }
   return ordered
+}
+
+/**
+ * Overlay spot-metal quotes (gold-api.com, price only) onto the merged
+ * universe. Metals appear only once a real quote has arrived; on later
+ * refreshes they keep their last-known price when the feed hiccups. The
+ * fields gold-api doesn't supply stay null — surfaces render an honest
+ * dash instead of a fabricated figure.
+ */
+function mergeMetals(coins: Coin[], metals: MetalQuote[]): Coin[] {
+  const identityBySymbol = new Map<string, CoinIdentity>()
+  for (const identity of ASSET_REGISTRY) {
+    if (identity.dataSource !== 'goldapi') continue
+    identityBySymbol.set(identity.marketSymbol ?? identity.id, identity)
+  }
+
+  const result = [...coins]
+  for (const metal of metals) {
+    const identity = identityBySymbol.get(metal.id)
+    if (!identity) continue
+    const next: Coin = {
+      id: identity.id,
+      name: identity.name,
+      ticker: identity.ticker,
+      price: metal.priceUsd,
+      change24h: null,
+      marketCap: null,
+      volume24h: null,
+      supply: null,
+      high24h: null,
+      low24h: null,
+      categories: identity.categories,
+      trending: identity.trending,
+      color: identity.color,
+      spark: [],
+      blurb: identity.blurb,
+      logoUrl: identity.logoUrl,
+      assetClass: identity.assetClass,
+      quoteCurrency: identity.quoteCurrency,
+      decimals: identity.decimals,
+      dataSource: identity.dataSource,
+      tvSymbol: identity.tvSymbol,
+    }
+    const existing = result.findIndex((coin) => coin.id === identity.id)
+    if (existing >= 0) result[existing] = next
+    else result.push(next)
+  }
+  return result
 }
 
 /**
@@ -167,15 +236,18 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
       controller = current
 
       try {
-        // The global snapshot is a nice-to-have (dominance degrades to a
-        // dash) — its failure must not discard fresh quotes.
-        const [quotes, global] = await Promise.all([
-          fetchCoinGeckoQuotes(ALL_COIN_IDS, current.signal),
+        // The global snapshot and the spot-metals feed are nice-to-haves
+        // (dominance degrades to a dash; metals keep last-known or stay
+        // out) — either failing must not discard fresh crypto quotes.
+        const [quotes, global, metals] = await Promise.all([
+          fetchCoinGeckoQuotes(CRYPTO_IDS, current.signal),
           fetchCoinGeckoGlobal(current.signal).catch(() => null),
+          fetchMetalQuotes(METAL_SYMBOLS, current.signal).catch(() => null),
         ])
         if (disposed || controller !== current) return
+        const coins = mergeQuotes(snapshot.coins, quotes)
         emit({
-          coins: mergeQuotes(snapshot.coins, quotes),
+          coins: metals ? mergeMetals(coins, metals) : coins,
           btcDominance: global?.btcDominance ?? null,
           loading: false,
           stale: false,

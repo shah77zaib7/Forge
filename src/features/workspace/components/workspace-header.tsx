@@ -4,13 +4,13 @@ import { useNavigate } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { CoinLogo } from '@/features/markets/components/coin-logo'
+import { AssetIcon } from '@/features/markets/components/asset-icon'
 import { StarButton } from '@/features/markets/components/star-button'
 import { categoryLabels } from '@/features/markets/data'
 import { formatMarketPrice } from '@/features/markets/lib/format'
 import type { Coin } from '@/features/markets/types'
 import { cn } from '@/lib/cn'
-import { formatChange } from '@/lib/format'
+import { changeTone, formatChange } from '@/lib/format'
 
 import { shareCoin } from '../lib/share'
 
@@ -25,7 +25,7 @@ export function WorkspaceHeader({ coin, favorited, onToggleFavorite }: Workspace
   const navigate = useNavigate()
   const [copied, setCopied] = useState(false)
   const copiedTimer = useRef<number | null>(null)
-  const tone = coin.change24h > 0 ? 'positive' : coin.change24h < 0 ? 'negative' : 'neutral'
+  const tone = changeTone(coin.change24h)
 
   async function handleShare() {
     const result = await shareCoin(coin)
@@ -60,7 +60,7 @@ export function WorkspaceHeader({ coin, favorited, onToggleFavorite }: Workspace
       <div className="mt-6 flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
         {/* Identity */}
         <div className="flex min-w-0 items-center gap-5">
-          <CoinLogo
+          <AssetIcon
             ticker={coin.ticker}
             color={coin.color}
             size="xl"
