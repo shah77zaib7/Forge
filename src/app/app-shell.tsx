@@ -78,8 +78,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const currentLabel =
     location.pathname === '/design-system' ? 'Design System' : (current?.label ?? 'Workspace')
 
+  // dvh tracks the visible viewport on mobile (URL bar collapse/expand),
+  // so fixed bottom elements never drift behind browser chrome.
   return (
-    <div className="min-h-screen">
+    <div className="min-h-dvh">
       <Sidebar
         collapsed={collapsed}
         mobileOpen={mobileOpen}

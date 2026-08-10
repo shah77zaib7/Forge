@@ -68,6 +68,23 @@ export function OraclePage() {
   const messagesRef = useRef(messages)
   messagesRef.current = messages
 
+  // The floating composer is the single source of truth for the bottom
+  // offset: its live height is published as --forge-composer-h so the page
+  // clearance, the conversation scroll anchor and the empty-state sizing all
+  // reference the same measured value (no scattered hardcoded paddings).
+  // A callback ref (not a mount effect) so it fires exactly when the node
+  // attaches — the composer isn't rendered during the loading/error guards.
+  const composerRef = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return
+    const update = () => {
+      document.documentElement.style.setProperty('--forge-composer-h', `${el.offsetHeight}px`)
+    }
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
   useEffect(() => {
     thinkingRef.current = thinking
   }, [thinking])
@@ -281,8 +298,11 @@ export function OraclePage() {
     return <MarketDataError onRetry={refresh} className="mx-auto max-w-6xl pt-4" />
   }
 
+  // The shell's <main> already adds pb-20 on mobile; subtract it here so the
+  // total bottom clearance (page + shell) equals the measured composer height
+  // exactly — no dead space, no double-counting.
   return (
-    <div className="mx-auto max-w-6xl pb-44 lg:pb-0">
+    <div className="mx-auto max-w-6xl pb-[calc(var(--forge-composer-h,13.5rem)_-_5rem)] lg:pb-0">
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_23rem] lg:items-start">
         {/* Conversation column */}
         <div className="min-w-0">
@@ -302,7 +322,10 @@ export function OraclePage() {
           {/* Floating composer — fixed to the viewport bottom on mobile,
               sticky inside the column on desktop. Messages scroll beneath
               its gradient fade either way. */}
-          <div className="fixed inset-x-0 bottom-0 z-20 bg-gradient-to-t from-background via-background/90 to-transparent px-4 pb-[max(env(safe-area-inset-bottom,0px),1rem)] pt-10 sm:px-6 lg:sticky lg:inset-x-auto lg:px-0">
+          <div
+            ref={composerRef}
+            className="fixed inset-x-0 bottom-0 z-20 bg-gradient-to-t from-background via-background/90 to-transparent px-4 pb-[max(env(safe-area-inset-bottom,0px),1rem)] pt-6 sm:px-6 lg:sticky lg:inset-x-auto lg:px-0"
+          >
             <InputBar
               onSend={handleComposerSend}
               disabled={thinking}

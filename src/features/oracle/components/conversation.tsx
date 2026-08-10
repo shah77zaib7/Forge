@@ -33,8 +33,11 @@ function EmptyState({
 }) {
   const greeting = useMemo(() => getGreeting(), [])
 
+  // Sized to the usable area: one dynamic viewport minus the measured
+  // composer height and the fixed top chrome (status pill + page offset),
+  // so the greeting centers above the composer instead of behind it.
   return (
-    <div className="flex min-h-[60dvh] flex-col items-center justify-center px-2 pb-28 pt-10 text-center">
+    <div className="flex min-h-[calc(100dvh_-_var(--forge-composer-h,13.5rem)_-_9rem)] flex-col items-center justify-center px-2 pt-6 text-center">
       <motion.div
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -395,8 +398,9 @@ export function Conversation({
       })}
 
       {isThinking && <ThinkingSkeleton coin={coin} timeframeId={timeframeId} mode={mode} />}
-      {/* scroll-margin keeps the newest card clear of the floating composer. */}
-      <div ref={bottomRef} className="h-1 scroll-mb-40" />
+      {/* scroll-margin keeps the newest card clear of the floating composer —
+          sized from the same measured --forge-composer-h as the page clearance. */}
+      <div ref={bottomRef} className="h-1 scroll-mb-[var(--forge-composer-h,13.5rem)]" />
     </div>
   )
 }
