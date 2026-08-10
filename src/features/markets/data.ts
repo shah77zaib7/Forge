@@ -20,24 +20,6 @@ export const categoryLabels: Record<CategoryId, string> = {
 }
 
 /* ------------------------------------------------------------------ */
-/* Precious-metal logos — inline SVG marks so gold/silver render a    */
-/* recognizable ingot even though the spot-metals feed carries no     */
-/* logo reference. Data URIs keep them dependency-free and offline.   */
-/* ------------------------------------------------------------------ */
-
-function svgLogo(body: string): string {
-  return `data:image/svg+xml,${encodeURIComponent(body)}`
-}
-
-const GOLD_LOGO = svgLogo(
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="8" y="20" width="48" height="30" rx="5" fill="#E6B800"/><rect x="8" y="20" width="48" height="6" rx="3" fill="#FFDF5C" opacity="0.9"/><text x="32" y="44" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="15" font-weight="bold" fill="#7A5A00">Au</text></svg>',
-)
-
-const SILVER_LOGO = svgLogo(
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="8" y="20" width="48" height="30" rx="5" fill="#C6CBD1"/><rect x="8" y="20" width="48" height="6" rx="3" fill="#E3E7EC"/><text x="32" y="44" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="15" font-weight="bold" fill="#4B525A">Ag</text></svg>',
-)
-
-/* ------------------------------------------------------------------ */
 /* Asset registry — Forge's canonical catalog.                        */
 /*                                                                    */
 /* Every asset Forge knows lives here exactly once: stable internal   */
@@ -468,7 +450,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
     id: 'gold',
     tvSymbol: 'OANDA:XAUUSD',
     marketSymbol: 'xau',
-    logoUrl: GOLD_LOGO,
+    logoUrl: '/logos/gold.jpg',
     name: 'Gold',
     ticker: 'XAU',
     categories: [],
@@ -485,7 +467,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
     id: 'silver',
     tvSymbol: 'OANDA:XAGUSD',
     marketSymbol: 'xag',
-    logoUrl: SILVER_LOGO,
+    logoUrl: '/logos/silver.jpg',
     name: 'Silver',
     ticker: 'XAG',
     categories: [],
