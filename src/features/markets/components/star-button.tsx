@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { Star } from 'lucide-react'
 
 import { cn } from '@/lib/cn'
+import { playForgeInteraction } from '@/lib/ui-sound'
 
 interface StarButtonProps {
   favorited: boolean
@@ -19,6 +20,7 @@ export function StarButton({ favorited, onToggle, size = 'sm', className }: Star
       onClick={(event) => {
         // Never let the toggle bubble to a parent selectable row.
         event.stopPropagation()
+        playForgeInteraction()
         onToggle()
       }}
       aria-pressed={favorited}

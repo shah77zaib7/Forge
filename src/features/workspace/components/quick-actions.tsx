@@ -1,8 +1,10 @@
 import { motion } from 'framer-motion'
-import { Bell, ChartCandlestick, Orbit, Share, Star } from 'lucide-react'
+import { Bell, BellPlus, ChartCandlestick, Orbit, Share, Star } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+
+import { playForgeInteraction } from '@/lib/ui-sound'
+import { useAlerts } from '@/store/alerts'
 
 import { micro } from '@/design/motion'
 import type { Coin } from '@/features/markets/types'
@@ -14,6 +16,7 @@ interface QuickActionsProps {
   coin: Coin
   favorited: boolean
   onToggleFavorite: () => void
+  onOpenAlert: () => void
 }
 
 function ActionButton({
@@ -34,7 +37,10 @@ function ActionButton({
       type="button"
       whileTap={{ scale: 0.92 }}
       transition={micro}
-      onClick={onClick}
+      onClick={() => {
+        playForgeInteraction()
+        onClick()
+      }}
       aria-pressed={active || undefined}
       className="flex flex-col items-center gap-1 rounded-2xl py-1.5 outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-tint/30"
     >
@@ -51,9 +57,15 @@ function ActionButton({
 }
 
 /** Mobile-only sticky action bar — everything you'd want within reach. */
-export function QuickActions({ coin, favorited, onToggleFavorite }: QuickActionsProps) {
+export function QuickActions({
+  coin,
+  favorited,
+  onToggleFavorite,
+  onOpenAlert,
+}: QuickActionsProps) {
   const navigate = useNavigate()
-  const [alertSet, setAlertSet] = useState(false)
+  const { alerts } = useAlerts()
+  const hasAlert = alerts.some((alert) => alert.assetId === coin.id)
 
   const scrollToChart = () => {
     document.getElementById('forge-chart')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -70,10 +82,10 @@ export function QuickActions({ coin, favorited, onToggleFavorite }: QuickActions
           <ActionButton icon={Orbit} label="Ask Oracle" onClick={() => navigate('/oracle')} />
           <ActionButton icon={ChartCandlestick} label="Open Chart" onClick={scrollToChart} />
           <ActionButton
-            icon={Bell}
-            label={alertSet ? 'Alert Set' : 'Add Alert'}
-            active={alertSet}
-            onClick={() => setAlertSet((value) => !value)}
+            icon={hasAlert ? Bell : BellPlus}
+            label={hasAlert ? 'Alert Set' : 'Add Alert'}
+            active={hasAlert}
+            onClick={onOpenAlert}
           />
           <ActionButton icon={Share} label="Share" onClick={share} />
           <ActionButton

@@ -1,4 +1,4 @@
-import { ChartCandlestick, LayoutDashboard, Orbit, Settings, Star } from 'lucide-react'
+import { Bell, ChartCandlestick, LayoutDashboard, Orbit, Settings, Star } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 export interface NavItem {
@@ -13,6 +13,7 @@ export const navItems: NavItem[] = [
   { to: '/markets', label: 'Markets', icon: ChartCandlestick },
   { to: '/oracle', label: 'Oracle', icon: Orbit },
   { to: '/watchlist', label: 'Watchlist', icon: Star },
+  { to: '/alerts', label: 'Alerts', icon: Bell },
 ]
 
 /** Pinned to the bottom of the sidebar. */

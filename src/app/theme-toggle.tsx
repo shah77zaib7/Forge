@@ -3,6 +3,7 @@ import { Moon, Sun } from 'lucide-react'
 
 import { ease } from '@/design/motion'
 import { cn } from '@/lib/cn'
+import { playForgeInteraction } from '@/lib/ui-sound'
 
 import { useTheme } from './theme'
 
@@ -18,7 +19,10 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
   return (
     <button
       type="button"
-      onClick={toggleTheme}
+      onClick={() => {
+        playForgeInteraction()
+        toggleTheme()
+      }}
       aria-label={`Switch to ${isDark ? 'light' : 'dark'} theme`}
       title={`Switch to ${isDark ? 'light' : 'dark'} theme`}
       className={cn(

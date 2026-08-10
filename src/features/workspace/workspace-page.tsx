@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
 
+import { AlertSheet } from '@/features/alerts/alert-sheet'
 import { MarketDataLoading } from '@/features/markets/components/market-data-states'
 import { useCoins, useMarketData } from '@/store/market-data'
 import { useFavorites } from '@/store/favorites'
@@ -35,6 +36,7 @@ export function WorkspacePage() {
   const { favorites, toggleFavorite } = useFavorites()
 
   const [timeframeId, setTimeframeId] = useState<LiquidityTimeframeId>(DEFAULT_LIQUIDITY_TIMEFRAME)
+  const [alertOpen, setAlertOpen] = useState(false)
   const timeframe = useMemo(
     () =>
       liquidityTimeframes.find((tf) => tf.id === timeframeId) ??
@@ -52,7 +54,12 @@ export function WorkspacePage() {
   return (
     <div className="mx-auto max-w-6xl pb-28 lg:pb-0">
       <Reveal>
-        <WorkspaceHeader coin={coin} favorited={favorited} onToggleFavorite={toggleFavorite} />
+        <WorkspaceHeader
+          coin={coin}
+          favorited={favorited}
+          onToggleFavorite={toggleFavorite}
+          onOpenAlert={() => setAlertOpen(true)}
+        />
       </Reveal>
 
       <Reveal>
@@ -93,7 +100,14 @@ export function WorkspacePage() {
         </Reveal>
       </div>
 
-      <QuickActions coin={coin} favorited={favorited} onToggleFavorite={() => toggleFavorite(coin.id)} />
+      <QuickActions
+        coin={coin}
+        favorited={favorited}
+        onToggleFavorite={() => toggleFavorite(coin.id)}
+        onOpenAlert={() => setAlertOpen(true)}
+      />
+
+      <AlertSheet open={alertOpen} onClose={() => setAlertOpen(false)} initialAssetId={coin.id} />
     </div>
   )
 }

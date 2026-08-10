@@ -1,6 +1,7 @@
 import { Check, X } from 'lucide-react'
 
 import { cn } from '@/lib/cn'
+import { playForgeInteraction } from '@/lib/ui-sound'
 
 interface ToggleProps {
   checked: boolean
@@ -36,7 +37,10 @@ export function Toggle({ checked, onChange, 'aria-label': ariaLabel, id, disable
         id={id}
         className="peer sr-only"
         checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
+        onChange={(event) => {
+          playForgeInteraction()
+          onChange(event.target.checked)
+        }}
         aria-label={ariaLabel}
         disabled={disabled}
       />

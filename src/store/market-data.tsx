@@ -80,6 +80,15 @@ export function getCoins(): Coin[] {
   return snapshot.coins
 }
 
+/**
+ * Subscribe to every market-data emission (each completed refresh). Used by
+ * non-React consumers — the price-alert engine evaluates on these emissions
+ * instead of running its own polling loop.
+ */
+export function subscribeMarketData(listener: () => void): () => void {
+  return subscribe(listener)
+}
+
 export type MarketData = MarketDataSnapshot & { refresh: () => void }
 
 export function useMarketData(): MarketData {

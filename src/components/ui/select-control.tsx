@@ -2,6 +2,7 @@ import { ChevronDown } from 'lucide-react'
 import { useId } from 'react'
 
 import { cn } from '@/lib/cn'
+import { playForgeInteraction } from '@/lib/ui-sound'
 
 export interface SelectOption {
   value: string
@@ -35,7 +36,10 @@ export function SelectControl({
       <select
         id={id}
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => {
+          playForgeInteraction()
+          onChange(event.target.value)
+        }}
         aria-label={ariaLabel}
         className={cn(
           'h-9 w-full cursor-pointer appearance-none rounded-control border border-border bg-tint/[0.04] pl-3.5 pr-9 text-xs font-medium text-foreground outline-none transition-colors duration-200',

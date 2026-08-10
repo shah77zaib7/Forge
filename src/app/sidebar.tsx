@@ -4,6 +4,7 @@ import { NavLink } from 'react-router-dom'
 
 import { Brand } from '@/components/brand'
 import { cn } from '@/lib/cn'
+import { playForgeInteraction } from '@/lib/ui-sound'
 
 import { navItems, settingsItem, type NavItem } from './nav'
 
@@ -23,7 +24,10 @@ function SidebarLink({ to, label, icon: Icon, collapsed, onNavigate }: SidebarLi
   return (
     <NavLink
       to={to}
-      onClick={onNavigate}
+      onClick={() => {
+        playForgeInteraction()
+        onNavigate()
+      }}
       title={collapsed ? label : undefined}
       className={({ isActive }) =>
         cn(
@@ -123,7 +127,10 @@ export function Sidebar({ collapsed, mobileOpen, onToggleCollapse, onNavigate }:
         <SidebarLink {...settingsItem} collapsed={collapsed} onNavigate={onNavigate} />
         <NavLink
           to="/design-system"
-          onClick={onNavigate}
+          onClick={() => {
+            playForgeInteraction()
+            onNavigate()
+          }}
           title={collapsed ? 'Design System' : undefined}
           className={cn(
             'mt-2 flex h-8 items-center gap-2 rounded-full px-4 text-xs text-faint transition-colors duration-200 hover:bg-tint/[0.04] hover:text-foreground',

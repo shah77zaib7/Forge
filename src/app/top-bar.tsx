@@ -3,6 +3,8 @@ import type { Ref } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { useProfile } from '@/store/profile'
+import { useAlerts } from '@/store/alerts'
+import { playForgeInteraction } from '@/lib/ui-sound'
 
 import { ThemeToggle } from './theme-toggle'
 
@@ -27,7 +29,10 @@ export function TopBar({ onMenuClick, currentLabel, mobileOpen, menuButtonRef }:
       <button
         type="button"
         ref={menuButtonRef}
-        onClick={onMenuClick}
+        onClick={() => {
+          playForgeInteraction()
+          onMenuClick()
+        }}
         aria-label="Open navigation"
         aria-expanded={mobileOpen}
         aria-controls="forge-sidebar"
@@ -56,19 +61,16 @@ export function TopBar({ onMenuClick, currentLabel, mobileOpen, menuButtonRef }:
 
         <ThemeToggle />
 
-        <button
-          type="button"
-          aria-label="Notifications"
-          className="flex size-9 items-center justify-center rounded-full text-muted transition-colors duration-200 hover:bg-tint/[0.06] hover:text-foreground"
-        >
-          <Bell size={17} strokeWidth={1.75} />
-        </button>
+        <AlertBell />
 
         <button
           type="button"
           aria-label="Open profile settings"
           title="Profile"
-          onClick={() => navigate('/settings')}
+          onClick={() => {
+            playForgeInteraction()
+            navigate('/settings')
+          }}
           className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-tint/[0.08] text-xs font-medium text-foreground transition-colors duration-200 hover:border-border-strong hover:bg-tint/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tint/30"
         >
           {profile.avatar ? (
@@ -79,5 +81,35 @@ export function TopBar({ onMenuClick, currentLabel, mobileOpen, menuButtonRef }:
         </button>
       </div>
     </header>
+  )
+}
+
+/**
+ * The notification bell — opens the Alerts cockpit, with a quiet dot
+ * whenever an alert has fired and is waiting to be seen.
+ */
+function AlertBell() {
+  const navigate = useNavigate()
+  const { alerts } = useAlerts()
+  const hasTriggered = alerts.some((alert) => alert.status === 'triggered')
+
+  return (
+    <button
+      type="button"
+      aria-label={hasTriggered ? 'Notifications — triggered alerts' : 'Notifications'}
+      onClick={() => {
+        playForgeInteraction()
+        navigate('/alerts')
+      }}
+      className="relative flex size-9 items-center justify-center rounded-full text-muted transition-colors duration-200 hover:bg-tint/[0.06] hover:text-foreground"
+    >
+      <Bell size={17} strokeWidth={1.75} />
+      {hasTriggered && (
+        <span
+          aria-hidden
+          className="absolute right-1.5 top-1.5 size-2 rounded-full bg-foreground ring-2 ring-background"
+        />
+      )}
+    </button>
   )
 }

@@ -2,6 +2,7 @@ import { motion, type HTMLMotionProps } from 'framer-motion'
 
 import { micro } from '@/design/motion'
 import { cn } from '@/lib/cn'
+import { playForgeInteraction } from '@/lib/ui-sound'
 
 const base =
   // touch-pan-y: let the browser own vertical panning so framer's tap
@@ -35,6 +36,7 @@ export function Button({
   size = 'md',
   className,
   children,
+  onClick,
   ...props
 }: ButtonProps) {
   return (
@@ -44,6 +46,10 @@ export function Button({
       whileTap={{ scale: 0.97 }}
       transition={micro}
       className={cn(base, variants[variant], sizes[size], className)}
+      onClick={(event) => {
+        playForgeInteraction()
+        onClick?.(event)
+      }}
       {...props}
     >
       {children}

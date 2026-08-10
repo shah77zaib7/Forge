@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, Share } from 'lucide-react'
+import { ArrowLeft, Bell, Check, Share } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -18,10 +18,11 @@ interface WorkspaceHeaderProps {
   coin: Coin
   favorited: boolean
   onToggleFavorite: (id: string) => void
+  onOpenAlert: () => void
 }
 
 /** Identity, live price and actions — the calm entry into a market. */
-export function WorkspaceHeader({ coin, favorited, onToggleFavorite }: WorkspaceHeaderProps) {
+export function WorkspaceHeader({ coin, favorited, onToggleFavorite, onOpenAlert }: WorkspaceHeaderProps) {
   const navigate = useNavigate()
   const [copied, setCopied] = useState(false)
   const copiedTimer = useRef<number | null>(null)
@@ -123,6 +124,15 @@ export function WorkspaceHeader({ coin, favorited, onToggleFavorite }: Workspace
               ) : (
                 <Share size={16} strokeWidth={1.75} />
               )}
+            </Button>
+            <Button
+              variant="secondary"
+              size="md"
+              className="size-9 px-0"
+              onClick={onOpenAlert}
+              aria-label="Create price alert"
+            >
+              <Bell size={16} strokeWidth={1.75} />
             </Button>
             <StarButton size="md" favorited={favorited} onToggle={() => onToggleFavorite(coin.id)} />
           </div>

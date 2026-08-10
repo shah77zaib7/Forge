@@ -1,4 +1,5 @@
 import { cn } from '@/lib/cn'
+import { playForgeInteraction } from '@/lib/ui-sound'
 
 interface FilterChipProps {
   label: string
@@ -11,7 +12,10 @@ export function FilterChip({ label, active, onClick }: FilterChipProps) {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => {
+        playForgeInteraction()
+        onClick()
+      }}
       aria-pressed={active}
       className={cn(
         'flex h-9 items-center rounded-full border px-4 text-xs font-medium outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-tint/30',

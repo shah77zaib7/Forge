@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { useId, useRef, type KeyboardEvent } from 'react'
 
 import { cn } from '@/lib/cn'
+import { playForgeInteraction } from '@/lib/ui-sound'
 
 export interface SegmentedOption<T extends string> {
   value: T
@@ -74,7 +75,10 @@ export function SegmentedControl<T extends string>({
             aria-selected={selected}
             tabIndex={selected ? 0 : -1}
             data-index={index}
-            onClick={() => onChange(option.value)}
+            onClick={() => {
+              playForgeInteraction()
+              onChange(option.value)
+            }}
             onKeyDown={(event) => handleKeyDown(event, index)}
             className={cn(
               // sm tabs carry tighter padding so 7 timeframe options fit
