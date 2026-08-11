@@ -16,6 +16,7 @@ import { OracleSummary } from './components/oracle-summary'
 import { QuickActions } from './components/quick-actions'
 import { RelatedMarkets } from './components/related-markets'
 import { Reveal } from './components/reveal'
+import { SetupIntelligenceCard } from './components/setup-intelligence-card'
 import { WorkspaceHeader } from './components/workspace-header'
 import { DEFAULT_LIQUIDITY_TIMEFRAME, liquidityTimeframes, type LiquidityTimeframeId } from './data'
 
@@ -78,9 +79,12 @@ export function WorkspacePage() {
           <OracleSummary coin={coin} timeframe={timeframe} />
         </Reveal>
         <Reveal className="lg:col-start-1 lg:row-start-3">
-          <NewsList coin={coin} />
+          <SetupIntelligenceCard coin={coin} timeframe={timeframe} />
         </Reveal>
         <Reveal className="lg:col-start-1 lg:row-start-4">
+          <NewsList coin={coin} />
+        </Reveal>
+        <Reveal className="lg:col-start-1 lg:row-start-5">
           <NotesCard coin={coin} />
         </Reveal>
 
