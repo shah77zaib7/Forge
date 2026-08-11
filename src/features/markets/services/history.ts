@@ -1,30 +1,22 @@
 /**
- * Real OHLC history — CoinGecko's keyless /ohlc endpoint.
+ * Real OHLC history for Forge's workspace windows, served by a provider
+ * registry (HistoryProvider) so each window resolves to whatever source can
+ * genuinely supply it:
  *
- * The public API publishes OHLC series at a fixed set of granularities
- * (no sub-30m candles, and daily+ is coarse):
+ *   CoinGecko keyless /ohlc  →  1H (30m candles), 4H (4h), 1D (aggregated), 1W (4d)
+ *   Exchange klines          →  1M / 5M / 15M (real sub-30m candles)
  *
- *   days=1   → 30-minute candles (48)
- *   days=30  → 4-hour candles (180)
- *   days=365 → 4-day candles (92)
- *
- * Forge's workspace windows map onto what the provider actually publishes,
- * using the closest legitimate interval and labelling it honestly:
- *
- *   1H window ← 30m candles (days=1)      — closest supported granularity
- *   4H window ← 4h  candles (days=30)     — exact
- *   1D window ← 1d  candles aggregated from the 4h series (days=30)
- *   1W window ← 4d  candles (days=365)    — provider's coarse weekly proxy
- *
- * Windows the provider cannot supply at all (1M/5M/15M sub-30m OHLC) are
- * reported as unsupported — the engine returns insufficient_data instead of
- * inventing candles. Metals (XAU/XAG) have no CoinGecko history at all.
+ * CoinGecko's public API publishes no sub-30m OHLC, so the sub-30m windows
+ * are served by the exchange klines provider (Binance → Bybit fallback), the
+ * same deterministic engine consuming either source. Windows an asset has no
+ * tradable pair for (stablecoins, metals) stay honest-unavailable — never
+ * fabricated.
  *
  * Every payload is validated before use: candles with non-finite values,
  * inverted high/low, or out-of-range open/close are dropped so a malformed
- * response can never break analysis. Requests are cached per asset+days with
- * a TTL tied to the candle size (refetch when a new candle closes, not on
- * every price tick).
+ * response can never break analysis. Requests are cached per asset + window
+ * with a TTL tied to the candle size (refetch when a new candle closes, not
+ * on every price tick).
  */
 
 import { fetchJson } from './http'
@@ -64,7 +56,7 @@ export const HISTORY_WINDOW_PLANS: Record<string, HistoryWindowPlan> = {
 /** The smallest window that still yields a useful swing/ATR read. */
 export const MIN_CANDLES = 14
 
-export type HistoryWindowId = '1H' | '4H' | '1D' | '1W'
+export type HistoryWindowId = '1M' | '5M' | '15M' | '1H' | '4H' | '1D' | '1W'
 
 /**
  * A candle-history provider — the seam where new data sources slot in.
@@ -234,9 +226,8 @@ export async function fetchWindowCandles(
 }
 
 /**
- * CoinGecko keyless OHLC provider — Forge's current history source. Declares
- * exactly the windows the public API publishes; sub-30m windows are absent
- * on purpose (the provider does not offer them keylessly).
+ * CoinGecko keyless OHLC provider — serves the 30m/4h/1d/4w windows the
+ * public API publishes. Sub-30m windows are handled by the exchange provider.
  */
 export const coingeckoHistoryProvider: HistoryProvider = {
   id: 'coingecko',
@@ -249,17 +240,175 @@ export const coingeckoHistoryProvider: HistoryProvider = {
   },
 }
 
-/** Registered history providers, in priority order. Add sub-30m sources here. */
-export const historyProviders: HistoryProvider[] = [coingeckoHistoryProvider]
+/* ------------------------------------------------------------------ */
+/* Exchange klines — real sub-30m candles (Binance → Bybit fallback).   */
+/* ------------------------------------------------------------------ */
+
+export interface ExchangeKlinePlan {
+  window: '1M' | '5M' | '15M'
+  /** Exchange interval token, e.g. '1m' | '5m' | '15m'. */
+  interval: string
+  /** Honest label for the candles actually analyzed. */
+  granularity: string
+  /** Cache TTL — one candle close, roughly. */
+  ttlMs: number
+  /** Candles requested per fetch (Binance caps at 1000). */
+  limit: number
+}
+
+export const EXCHANGE_WINDOW_PLANS: Record<string, ExchangeKlinePlan> = {
+  '1M': { window: '1M', interval: '1m', granularity: '1m', ttlMs: 45_000, limit: 500 },
+  '5M': { window: '5M', interval: '5m', granularity: '5m', ttlMs: 90_000, limit: 300 },
+  '15M': { window: '15M', interval: '15m', granularity: '15m', ttlMs: 240_000, limit: 300 },
+}
+
+/**
+ * One keyless public klines endpoint. Every row is normalized into
+ * [openTimeMs, open, high, low, close] before validation — the exchange
+ * provider never trusts raw payload shapes.
+ */
+interface KlineEndpoint {
+  id: string
+  url(symbol: string, interval: string, limit: number): string
+  /** Normalize a payload into raw [ts, o, h, l, c] rows; [] when unusable. */
+  rows(payload: unknown): Array<[number, number, number, number, number]>
+}
+
+const toNum = (value: unknown): number => (typeof value === 'string' || typeof value === 'number' ? Number(value) : NaN)
+
+/** Coerce an untrusted row into a 5-tuple, or null when unusable. */
+function rawRow(row: unknown): [number, number, number, number, number] | null {
+  if (!Array.isArray(row) || row.length < 5) return null
+  const [timestamp, open, high, low, close] = row
+  return [toNum(timestamp), toNum(open), toNum(high), toNum(low), toNum(close)]
+}
+
+const KLINE_ENDPOINTS: KlineEndpoint[] = [
+  {
+    id: 'binance',
+    url: (symbol, interval, limit) =>
+      `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`,
+    rows(payload) {
+      if (!Array.isArray(payload)) return []
+      return payload.flatMap((row) => {
+        const parsed = rawRow(row)
+        return parsed ? [parsed] : []
+      })
+    },
+  },
+  {
+    id: 'bybit',
+    url: (symbol, interval, limit) =>
+      `https://api.bybit.com/v5/market/kline?category=spot&symbol=${symbol}&interval=${interval.replace('m', '')}&limit=${limit}`,
+    rows(payload) {
+      const list = (payload as { result?: { list?: unknown[] } })?.result?.list
+      if (!Array.isArray(list)) return []
+      return list
+        .flatMap((row) => {
+          const parsed = rawRow(row)
+          return parsed ? [parsed] : []
+        })
+        .reverse() // Bybit returns newest-first.
+    },
+  },
+]
+
+/** Parse one raw kline row into a validated candle, or null. */
+function parseKline(raw: Array<[number, number, number, number, number]>[number]): Candle | null {
+  return parseCandle(raw)
+}
+
+/** Normalize endpoint rows into sorted, validated, de-duplicated candles. */
+function normalizeKlines(rows: Array<[number, number, number, number, number]>): Candle[] {
+  const candles: Candle[] = []
+  const seen = new Set<number>()
+  for (const row of rows) {
+    const candle = parseKline(row)
+    if (!candle || seen.has(candle.timestamp)) continue
+    seen.add(candle.timestamp)
+    candles.push(candle)
+  }
+  candles.sort((a, b) => a.timestamp - b.timestamp)
+  return candles
+}
+
+const exchangeCache = new Map<string, CacheEntry>()
+
+/**
+ * Fetch a real exchange kline series, trying each keyless endpoint in order
+ * (region blocks and outages fall through to the next). Cached per symbol +
+ * window with the same synchronous-on-abort eviction as the CoinGecko cache.
+ */
+export async function fetchExchangeKlines(
+  symbol: string,
+  plan: ExchangeKlinePlan,
+  signal?: AbortSignal,
+): Promise<Candle[]> {
+  const key = `${symbol}:${plan.window}`
+  const entry = exchangeCache.get(key)
+  if (entry && Date.now() - entry.fetchedAt < plan.ttlMs) return entry.promise
+
+  const onAbort = () => exchangeCache.delete(key)
+  signal?.addEventListener('abort', onAbort, { once: true })
+
+  const promise = (async () => {
+    let lastError: unknown = null
+    for (const endpoint of KLINE_ENDPOINTS) {
+      try {
+        const payload = await fetchJson(endpoint.url(symbol, plan.interval, plan.limit), signal)
+        const candles = normalizeKlines(endpoint.rows(payload))
+        if (candles.length >= MIN_CANDLES) return candles
+        lastError = new Error(`${endpoint.id} returned too few candles for ${symbol}`)
+      } catch (cause) {
+        lastError = cause
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error('No exchange kline source available')
+  })()
+
+  exchangeCache.set(key, { fetchedAt: Date.now(), promise })
+  try {
+    const candles = await promise
+    exchangeCache.set(key, { fetchedAt: Date.now(), promise })
+    return candles
+  } catch (cause) {
+    exchangeCache.delete(key)
+    throw cause
+  } finally {
+    signal?.removeEventListener('abort', onAbort)
+  }
+}
+
+/**
+ * Exchange klines provider — real 1M/5M/15M candles for assets with a
+ * tradable keyless pair (crypto + XAUT). Assets without a pair (stablecoins,
+ * metals) are never queried; the hook reports them honest-unavailable.
+ */
+export const exchangeKlinesProvider: HistoryProvider = {
+  id: 'exchange',
+  label: 'Exchange klines',
+  supportedWindows: ['1M', '5M', '15M'],
+  fetchWindowCandles(assetSymbol, window, signal) {
+    const plan = EXCHANGE_WINDOW_PLANS[window]
+    if (!plan) return Promise.resolve(null)
+    return fetchExchangeKlines(assetSymbol, plan, signal).then((candles) =>
+      candles.length === 0 ? null : { candles, granularity: plan.granularity },
+    )
+  },
+}
+
+/** Registered history providers, in priority order. */
+export const historyProviders: HistoryProvider[] = [coingeckoHistoryProvider, exchangeKlinesProvider]
 
 /** Resolve the provider responsible for a window, or null if none can supply it. */
 export function providerForWindow(window: string): HistoryProvider | null {
-  const id = (Object.keys(HISTORY_WINDOW_PLANS) as HistoryWindowId[]).find((w) => w === window)
-  if (!id) return null
-  return historyProviders.find((provider) => provider.supportedWindows.includes(id)) ?? null
+  const known = new Set<HistoryWindowId>([...Object.keys(HISTORY_WINDOW_PLANS), ...Object.keys(EXCHANGE_WINDOW_PLANS)] as HistoryWindowId[])
+  if (!known.has(window as HistoryWindowId)) return null
+  return historyProviders.find((provider) => provider.supportedWindows.includes(window as HistoryWindowId)) ?? null
 }
 
 /** Drop every cached series — used by tests and manual cache busts. */
 export function clearHistoryCache(): void {
   cache.clear()
+  exchangeCache.clear()
 }

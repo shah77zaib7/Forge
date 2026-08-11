@@ -42,6 +42,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'bitcoin',
     tvSymbol: 'BITSTAMP:BTCUSD',
+    exchangeSymbol: 'BTCUSDT',
     name: 'Bitcoin',
     ticker: 'BTC',
     supply: 19_750_000,
@@ -58,6 +59,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'ethereum',
     tvSymbol: 'BITSTAMP:ETHUSD',
+    exchangeSymbol: 'ETHUSDT',
     name: 'Ethereum',
     ticker: 'ETH',
     supply: 120_400_000,
@@ -90,6 +92,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'solana',
     tvSymbol: 'COINBASE:SOLUSD',
+    exchangeSymbol: 'SOLUSDT',
     name: 'Solana',
     ticker: 'SOL',
     supply: 474_000_000,
@@ -106,6 +109,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'bnb',
     tvSymbol: 'BINANCE:BNBUSDT',
+    exchangeSymbol: 'BNBUSDT',
     marketSymbol: 'binancecoin',
     name: 'BNB',
     ticker: 'BNB',
@@ -123,6 +127,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'xrp',
     tvSymbol: 'BINANCE:XRPUSDT',
+    exchangeSymbol: 'XRPUSDT',
     marketSymbol: 'ripple',
     name: 'XRP',
     ticker: 'XRP',
@@ -156,6 +161,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'cardano',
     tvSymbol: 'BINANCE:ADAUSDT',
+    exchangeSymbol: 'ADAUSDT',
     name: 'Cardano',
     ticker: 'ADA',
     supply: 35_900_000_000,
@@ -172,6 +178,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'dogecoin',
     tvSymbol: 'BINANCE:DOGEUSDT',
+    exchangeSymbol: 'DOGEUSDT',
     name: 'Dogecoin',
     ticker: 'DOGE',
     supply: 147_000_000_000,
@@ -188,6 +195,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'avalanche',
     tvSymbol: 'BINANCE:AVAXUSDT',
+    exchangeSymbol: 'AVAXUSDT',
     marketSymbol: 'avalanche-2',
     name: 'Avalanche',
     ticker: 'AVAX',
@@ -205,6 +213,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'shiba-inu',
     tvSymbol: 'BINANCE:SHIBUSDT',
+    exchangeSymbol: 'SHIBUSDT',
     name: 'Shiba Inu',
     ticker: 'SHIB',
     supply: 589_000_000_000_000,
@@ -221,6 +230,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'polkadot',
     tvSymbol: 'BINANCE:DOTUSDT',
+    exchangeSymbol: 'DOTUSDT',
     name: 'Polkadot',
     ticker: 'DOT',
     supply: 1_520_000_000,
@@ -237,6 +247,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'chainlink',
     tvSymbol: 'BINANCE:LINKUSDT',
+    exchangeSymbol: 'LINKUSDT',
     name: 'Chainlink',
     ticker: 'LINK',
     supply: 630_000_000,
@@ -253,6 +264,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'near',
     tvSymbol: 'BINANCE:NEARUSDT',
+    exchangeSymbol: 'NEARUSDT',
     name: 'NEAR Protocol',
     ticker: 'NEAR',
     supply: 1_180_000_000,
@@ -269,6 +281,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'uniswap',
     tvSymbol: 'BINANCE:UNIUSDT',
+    exchangeSymbol: 'UNIUSDT',
     name: 'Uniswap',
     ticker: 'UNI',
     supply: 600_000_000,
@@ -285,6 +298,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'pepe',
     tvSymbol: 'BINANCE:PEPEUSDT',
+    exchangeSymbol: 'PEPEUSDT',
     name: 'Pepe',
     ticker: 'PEPE',
     supply: 420_000_000_000_000,
@@ -301,6 +315,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'fetch-ai',
     tvSymbol: 'BINANCE:FETUSDT',
+    exchangeSymbol: 'FETUSDT',
     name: 'Fetch.ai',
     ticker: 'FET',
     supply: 2_580_000_000,
@@ -317,6 +332,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'arbitrum',
     tvSymbol: 'BINANCE:ARBUSDT',
+    exchangeSymbol: 'ARBUSDT',
     name: 'Arbitrum',
     ticker: 'ARB',
     supply: 3_500_000_000,
@@ -333,6 +349,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'render',
     tvSymbol: 'BINANCE:RENDERUSDT',
+    exchangeSymbol: 'RENDERUSDT',
     marketSymbol: 'render-token',
     name: 'Render',
     ticker: 'RENDER',
@@ -350,6 +367,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'aave',
     tvSymbol: 'BINANCE:AAVEUSDT',
+    exchangeSymbol: 'AAVEUSDT',
     name: 'Aave',
     ticker: 'AAVE',
     supply: 15_000_000,
@@ -366,6 +384,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'bittensor',
     tvSymbol: 'BINANCE:TAOUSDT',
+    exchangeSymbol: 'TAOUSDT',
     name: 'Bittensor',
     ticker: 'TAO',
     supply: 7_400_000,
@@ -382,6 +401,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'dogwifhat',
     tvSymbol: 'BINANCE:WIFUSDT',
+    exchangeSymbol: 'WIFUSDT',
     marketSymbol: 'dogwifcoin',
     name: 'dogwifhat',
     ticker: 'WIF',
@@ -399,6 +419,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'worldcoin',
     tvSymbol: 'BINANCE:WLDUSDT',
+    exchangeSymbol: 'WLDUSDT',
     marketSymbol: 'worldcoin-wld',
     name: 'Worldcoin',
     ticker: 'WLD',
@@ -416,6 +437,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'optimism',
     tvSymbol: 'BINANCE:OPUSDT',
+    exchangeSymbol: 'OPUSDT',
     name: 'Optimism',
     ticker: 'OP',
     supply: 1_280_000_000,
@@ -432,6 +454,7 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
   {
     id: 'tether-gold',
     tvSymbol: 'BITFINEX:XAUTUSD',
+    exchangeSymbol: 'XAUTUSDT',
     marketSymbol: 'tether-gold',
     name: 'Tether Gold',
     ticker: 'XAUT',

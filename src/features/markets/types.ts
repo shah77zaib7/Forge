@@ -96,6 +96,13 @@ export interface CoinIdentity
    */
   marketSymbol?: string
   /**
+   * The exchange klines pair (BASEQUOTE, e.g. "BTCUSDT") used by the
+   * sub-30m OHLC provider for real 1M/5M/15M candles. Only set for assets
+   * with a tradable keyless exchange pair; stablecoins and metals have no
+   * such pair and keep their honest unavailable state.
+   */
+  exchangeSymbol?: string
+  /**
    * The TradingView chart symbol (EXCHANGE:SYMBOL) for this asset, when one
    * exists — e.g. "BITSTAMP:BTCUSD", "OANDA:XAUUSD". Absent assets show a
    * graceful chart-unavailable state instead of an unrelated instrument.

@@ -279,13 +279,17 @@ export function LiquiditySnapshot({
       )}
 
       <LiveDataStatus
-        source="CoinGecko · OHLC"
+        source={
+          status === 'ready'
+            ? `${timeframeId === '1M' || timeframeId === '5M' || timeframeId === '15M' ? 'Exchange klines' : 'CoinGecko'} · ${analysis?.candleGranularity ?? ''}`
+            : 'OHLC history'
+        }
         updatedAt={status === 'ready' ? fetchedAt : null}
         note={
-          timeframeId === '1M' || timeframeId === '5M' || timeframeId === '15M'
-            ? 'Provider publishes no sub-30m OHLC'
-            : status === 'loading'
-              ? 'Calculating…'
+          status === 'loading'
+            ? 'Calculating…'
+            : status === 'insufficient'
+              ? (message ?? 'No historical data for this window.')
               : 'Awaiting historical feed'
         }
       />

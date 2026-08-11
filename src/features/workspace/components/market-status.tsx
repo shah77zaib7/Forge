@@ -155,9 +155,19 @@ export function MarketStatus({ coin, timeframe }: { coin: Coin; timeframe: Liqui
         </motion.div>
 
         <LiveDataStatus
-          source="CoinGecko · OHLC"
+          source={
+            ready
+              ? `${timeframe.id === '1M' || timeframe.id === '5M' || timeframe.id === '15M' ? 'Exchange klines' : 'CoinGecko'} · ${analysis?.candleGranularity ?? ''}`
+              : 'OHLC history'
+          }
           updatedAt={ready ? fetchedAt : null}
-          note={status === 'error' || message ? 'Awaiting historical feed' : 'Calculating…'}
+          note={
+            status === 'loading'
+              ? 'Calculating…'
+              : status === 'insufficient'
+                ? (message ?? 'No historical data for this window.')
+                : 'Awaiting historical feed'
+          }
         />
       </div>
     </GlassCard>

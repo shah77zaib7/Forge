@@ -5,12 +5,14 @@ import type { Coin } from '@/features/markets/types'
 
 import type { TimeframeAnalysis } from '../services/market-intelligence'
 import { analyzeTimeframe } from '../services/market-intelligence'
-import { fetchWindowCandles, HISTORY_WINDOW_PLANS, type Candle, type HistoryWindowPlan } from '../services/history'
+import { providerForWindow, type Candle, type HistoryProvider } from '../services/history'
 
 /**
- * Workspace liquidity windows — mirrors the workspace selector. Windows the
- * provider cannot feed (1M/5M/15M sub-30m OHLC) are resolved to null plans
- * and surface as an honest insufficient-data state.
+ * Workspace liquidity windows. Each window resolves to whichever history
+ * provider can genuinely supply it: CoinGecko serves 1H/4H/1D/1W, the
+ * exchange klines provider serves 1M/5M/15M. Assets without a tradable
+ * pair for the window (stablecoins/metals on sub-30m) surface an honest
+ * insufficient-data state instead of fabricated candles.
  */
 export type IntelligenceWindowId = '1M' | '5M' | '15M' | '1H' | '4H' | '1D' | '1W'
 
@@ -26,29 +28,33 @@ export interface IntelligenceState {
   refresh: () => void
 }
 
-/** The CoinGecko asset id for OHLC lookups — provider symbol from the registry. */
-function coinGeckoId(coin: Coin): string {
+/**
+ * The symbol the resolved provider fetches for this coin: CoinGecko's asset
+ * id (registry `marketSymbol` or the stable internal id) for the CoinGecko
+ * provider, or the exchange klines pair (`exchangeSymbol`, e.g. "BTCUSDT")
+ * for the exchange provider. Null means the provider has no pair for this
+ * asset — reported as honest-unavailable, never fabricated.
+ */
+function providerSymbol(coin: Coin, provider: HistoryProvider): string | null {
   const identity = ASSET_REGISTRY.find((asset) => asset.id === coin.id)
-  return identity?.marketSymbol ?? identity?.id ?? coin.id
+  if (!identity) return null
+  return provider.id === 'exchange' ? identity.exchangeSymbol ?? null : identity.marketSymbol ?? identity.id
 }
 
-const WINDOW_LOOKUP = new Map<IntelligenceWindowId, HistoryWindowPlan | null>(
-  (Object.keys(HISTORY_WINDOW_PLANS) as IntelligenceWindowId[]).map((window) => [window, HISTORY_WINDOW_PLANS[window]]),
-)
-
 /**
- * Market Intelligence hook — fetches the real candle series for the selected
- * window (cached per asset + granularity, re-fetched at most once per candle
- * close) and runs the deterministic engine over it. Distances track the live
- * quote, so price ticks recompute the cheap analysis without touching the
- * network. Unsupported windows and assets the provider can't cover return a
- * clear insufficient_data — never fabricated numbers.
+ * Market Intelligence hook — resolves the window's real history provider,
+ * fetches its candle series (cached per asset + window, re-fetched at most
+ * once per candle close) and runs the deterministic engine over it.
+ * Distances track the live quote, so price ticks recompute the cheap
+ * analysis without touching the network. Unsupported windows and assets the
+ * provider can't cover return a clear insufficient_data — never fabricated
+ * numbers.
  */
 export function useMarketIntelligence(
   coin: Coin | undefined,
   timeframeId: IntelligenceWindowId,
 ): IntelligenceState {
-  const plan = WINDOW_LOOKUP.get(timeframeId) ?? null
+  const provider = providerForWindow(timeframeId) ?? null
   const [candles, setCandles] = useState<Candle[] | null>(null)
   const [granularity, setGranularity] = useState('')
   const [fetchedAt, setFetchedAt] = useState<number | null>(null)
@@ -68,11 +74,12 @@ export function useMarketIntelligence(
     setGranularity('')
     setFetchedAt(null)
 
-    if (!coin || coin.dataSource !== 'coingecko') return
-    if (!plan) return
-    const id = coinGeckoId(coin)
+    if (!coin || !provider) return
+    const symbol = providerSymbol(coin, provider)
+    if (!symbol) return
 
-    void fetchWindowCandles(id, plan, controller.signal)
+    void provider
+      .fetchWindowCandles(symbol, timeframeId, controller.signal)
       .then((result) => {
         if (cancelled) return
         if (!result || result.candles.length === 0) {
@@ -98,7 +105,7 @@ export function useMarketIntelligence(
       cancelled = true
       controller.abort()
     }
-  }, [coin?.id, coin?.dataSource, plan, nonce])
+  }, [coin?.id, provider, nonce])
 
   // Distances re-derive from the live quote on every price tick — cheap,
   // pure recompute; the candle series and network are untouched.
@@ -121,12 +128,15 @@ export function useMarketIntelligence(
     return result
   }, [candles, coin?.price, timeframeId, granularity])
 
-  const noCoverage = !coin || coin.dataSource !== 'coingecko'
+  const identity = coin ? ASSET_REGISTRY.find((asset) => asset.id === coin.id) : undefined
+  const symbol = coin && provider ? providerSymbol(coin, provider) : null
+
+  const noPair = !identity || (provider ? !symbol : false)
   const status: IntelligenceStatus = error
     ? 'error'
-    : noCoverage
+    : !provider
       ? 'insufficient'
-      : !plan
+      : noPair
         ? 'insufficient'
         : analysis
           ? analysis.insufficient
@@ -135,10 +145,10 @@ export function useMarketIntelligence(
           : 'loading'
 
   const message =
-    noCoverage
-      ? 'No historical feed for this asset from the configured provider.'
-      : !plan
-        ? 'This window is not published by the market-data provider — real analysis would require fabricated candles.'
+    !provider
+      ? 'This window is not published by the market-data provider — real analysis would require fabricated candles.'
+      : noPair
+        ? `No ${timeframeId} feed for ${coin?.name ?? 'this asset'} — the market-data provider has no tradable pair for it.`
         : error
           ? 'Historical data temporarily unavailable. Live prices are unaffected.'
           : analysis?.insufficient
