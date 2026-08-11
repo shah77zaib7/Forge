@@ -16,8 +16,20 @@ import type { AiModelId } from '../types'
  * unreachable (local dev), only the Local engine is enabled — honest.
  * `dropUp` opens the list above the trigger — used in the bottom-anchored
  * Oracle composer where a downward list would overflow the viewport.
+ * `align` picks which side of the trigger the list grows from: 'right'
+ * suits buttons flush with the right edge (chart toolbar); 'left' keeps
+ * the list on-screen when the trigger sits mid-row (Oracle composer,
+ * where a right-anchored 16rem panel would extend off the left edge).
  */
-export function ModelSelector({ className, dropUp = false }: { className?: string; dropUp?: boolean }) {
+export function ModelSelector({
+  className,
+  dropUp = false,
+  align = 'right',
+}: {
+  className?: string
+  dropUp?: boolean
+  align?: 'left' | 'right'
+}) {
   const { modelId, setModelId, models, available, gatewayOf, requiresOf, fetchState, refreshAvailability } = useAi()
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -80,13 +92,17 @@ export function ModelSelector({ className, dropUp = false }: { className?: strin
             role="listbox"
             aria-label="Oracle models"
             className={cn(
-              'absolute right-0 z-40 w-60 overflow-hidden rounded-2xl border border-border bg-surface-2/95 p-1.5 shadow-float backdrop-blur-xl',
+              'absolute z-40 w-60 max-w-[min(16rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-border bg-background/95 p-1.5 shadow-float backdrop-blur-xl',
+              align === 'left' ? 'left-0' : 'right-0',
               dropUp ? 'bottom-full mb-2' : 'mt-2',
             )}
           >
             <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-[0.16em] text-faint">
               Oracle model
             </p>
+            {/* The list itself scrolls on very short viewports — the panel
+                never runs off-screen; the header + footer stay pinned. */}
+            <div className="max-h-[min(20rem,calc(100dvh-11rem))] overflow-y-auto overscroll-contain">
             {models.map((model) => {
               const isAvailable = available(model.id)
               const isActive = model.id === modelId
@@ -119,8 +135,8 @@ export function ModelSelector({ className, dropUp = false }: { className?: strin
                     className={cn('size-1.5 shrink-0 rounded-full', isAvailable ? 'bg-positive' : 'bg-faint')}
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-medium text-foreground">{model.label}</span>
-                    <span className="block truncate text-[10px] text-faint">
+                    <span className="block whitespace-nowrap text-xs font-medium text-foreground">{model.label}</span>
+                    <span className="block truncate text-[10px] text-muted">
                       {isAvailable ? (gateway ?? model.providerLabel) : requires.join(' · ')}
                     </span>
                   </span>
@@ -128,6 +144,7 @@ export function ModelSelector({ className, dropUp = false }: { className?: strin
                 </button>
               )
             })}
+            </div>
             <div className="mt-1 flex items-center justify-between border-t border-border px-2.5 pb-1 pt-2">
               <span className="text-[10px] text-faint">
                 {reportMissing ? 'Unavailable locally' : fetchState === 'loading' ? 'Checking…' : 'Key-free status'}

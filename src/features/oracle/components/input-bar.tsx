@@ -152,8 +152,10 @@ export function InputBar({
         />
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           {/* The active Oracle model — dropUp because the composer hugs the
-              bottom of the viewport, so the list must open upward. */}
-          <ModelSelector dropUp />
+              bottom of the viewport, so the list must open upward; aligned
+              left so it grows from the trigger toward the screen center
+              instead of off the left edge (it sits mid-row here). */}
+          <ModelSelector dropUp align="left" />
           {onOpenHistory && (
             <button
               type="button"
