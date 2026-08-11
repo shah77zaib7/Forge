@@ -473,13 +473,14 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
     id: 'gold',
     tvSymbol: 'OANDA:XAUUSD',
     marketSymbol: 'xau',
-    // PAX Gold (PAXG/USDT) — a 1:1 gold-backed token whose market tracks spot
-    // gold. The only legitimate keyless browser-viable gold OHLC source; the
-    // Liquidity Model labels it transparently rather than claiming spot.
-    exchangeSymbol: 'PAXGUSDT',
+    // Canonical Twelve Data instrument — Spot Gold. Gold NEVER routes through
+    // a tokenized proxy (PAXG/USDT is a separate asset); OHLC comes from
+    // Twelve Data XAU/USD when an API key is configured, otherwise the
+    // workspace shows an explicit not-configured unavailable state.
+    twelveDataSymbol: 'XAU/USD',
     logoUrl: '/logos/gold.jpg',
-    name: 'Gold',
-    ticker: 'XAU',
+    name: 'Spot Gold',
+    ticker: 'XAU/USD',
     categories: [],
     trending: false,
     color: '#D4A017',
@@ -488,15 +489,19 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
     decimals: 2,
     dataSource: 'goldapi',
     blurb:
-      'Spot gold — the classic safe-haven asset, quoted per troy ounce. Live via the spot-metals feed (price only).',
+      'Spot Gold (XAU/USD) — the classic safe-haven asset, quoted per troy ounce. OHLC via Twelve Data; live spot price via the metals feed.',
   },
   {
     id: 'silver',
     tvSymbol: 'OANDA:XAGUSD',
     marketSymbol: 'xag',
+    // Canonical Twelve Data instrument — Spot Silver. Never substituted with
+    // a silver-backed token; OHLC comes from Twelve Data XAG/USD when the
+    // API key is configured, otherwise an explicit unavailable state.
+    twelveDataSymbol: 'XAG/USD',
     logoUrl: '/logos/silver.jpg',
-    name: 'Silver',
-    ticker: 'XAG',
+    name: 'Spot Silver',
+    ticker: 'XAG/USD',
     categories: [],
     trending: false,
     color: '#9BA1A6',
@@ -505,6 +510,6 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
     decimals: 2,
     dataSource: 'goldapi',
     blurb:
-      'Spot silver — an industrial precious metal with deep safe-haven demand. Live via the spot-metals feed (price only).',
+      'Spot Silver (XAG/USD) — an industrial precious metal with deep safe-haven demand. OHLC via Twelve Data; live spot price via the metals feed.',
   },
 ]

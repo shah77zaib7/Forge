@@ -10,11 +10,13 @@
  * Routing rules (current providers):
  *   Crypto (CoinGecko-backed)  1H/4H/1D/1W → CoinGecko keyless OHLC
  *                              1M/5M/15M    → exchange klines (exchangeSymbol)
- *   Gold (XAU)                 ALL windows  → exchange klines, PAXG/USDT
- *                                            (PAX Gold, 1:1 gold-backed —
- *                                            labeled transparently)
- *   Silver (XAG)               none         → no legitimate keyless
- *                                            browser-viable OHLC provider
+ *   Spot Gold / Spot Silver    ALL windows  → Twelve Data (XAU/USD, XAG/USD)
+ *                                            when VITE_TWELVEDATA_API_KEY is
+ *                                            configured; otherwise an explicit
+ *                                            not-configured unavailable state.
+ *                                            PAXG/USDT (PAX Gold, a separate
+ *                                            tokenized asset) NEVER enters the
+ *                                            spot-metals pipeline.
  *   Stablecoins                1H+          → CoinGecko; sub-30m → none
  */
 
@@ -28,6 +30,7 @@ import {
   type HistoryProvider,
   type HistoryWindowId,
 } from './history'
+import { twelveDataBudgetExhausted, twelveDataHistoryProvider, twelveDataKey } from './twelvedata'
 
 export type Freshness = 'live' | 'recent' | 'stale' | 'unavailable'
 
@@ -39,9 +42,23 @@ export interface SeriesSource {
 /** Why a window can't be served — surfaced verbatim in the UI. */
 export function unavailableReason(coin: Coin, window: HistoryWindowId): string | null {
   const identity = ASSET_REGISTRY.find((asset) => asset.id === coin.id)
-  if (coin.id === 'silver') {
-    return 'No Silver historical feed is available — no legitimate keyless OHLC provider for spot silver in the browser.'
+  const isMetal = coin.id === 'gold' || coin.id === 'silver'
+
+  if (isMetal) {
+    if (!identity?.twelveDataSymbol) {
+      return `No ${window} historical feed for ${coin.name} — no Twelve Data instrument is mapped for it.`
+    }
+    if (!twelveDataKey()) {
+      return `Intraday liquidity unavailable — Twelve Data is not configured. Set VITE_TWELVEDATA_API_KEY (free at twelvedata.com) to enable ${coin.name} OHLC. No proxy instrument is used.`
+    }
+    if (twelveDataBudgetExhausted()) {
+      return 'Twelve Data daily budget reached — analysis resumes after midnight UTC. Live prices are unaffected.'
+    }
+    // A key IS configured: whether this window is actually served is decided
+    // by the API response itself (the provider surfaces the real error).
+    return null
   }
+
   if (identity && identity.dataSource !== 'coingecko' && !identity.exchangeSymbol) {
     return `No ${window} historical feed for ${coin.name} — the configured market-data providers have no candle history for it.`
   }
@@ -64,11 +81,13 @@ export function resolveSeriesSource(coin: Coin, window: HistoryWindowId): Series
 
   const sub30 = window === '1M' || window === '5M' || window === '15M'
 
-  // Metals: Gold uses the PAXG/USDT gold-token market (all windows); Silver
-  // has no legitimate keyless OHLC source.
+  // Metals: Spot Gold / Spot Silver resolve EXCLUSIVELY through Twelve Data
+  // (XAU/USD / XAG/USD) when an API key is configured. PAXG/USDT and any
+  // tokenized proxy are separate instruments and never enter this pipeline.
   if (coin.id === 'gold' || coin.id === 'silver') {
-    const symbol = identity.exchangeSymbol
-    return symbol ? { provider: exchangeKlinesProvider, symbol } : null
+    if (!twelveDataKey() || twelveDataBudgetExhausted()) return null
+    const symbol = identity.twelveDataSymbol
+    return symbol ? { provider: twelveDataHistoryProvider, symbol } : null
   }
 
   // Crypto: CoinGecko for 1H+, exchange klines for sub-30m.
@@ -127,7 +146,14 @@ export function assetCapabilities(coin: Coin): AssetCapabilities {
     ohlc: anyOhlc,
     volume: anyOhlc && (coin.id === 'gold' || Boolean(identity?.exchangeSymbol)),
     timeframes,
-    source: coin.id === 'gold' ? 'Binance · PAXG/USDT (gold token)' : identity ? providerLabel(identity.dataSource) : '—',
+    source:
+      coin.id === 'gold' || coin.id === 'silver'
+        ? twelveDataKey()
+          ? `Twelve Data · ${identity?.twelveDataSymbol ?? coin.ticker}`
+          : 'Twelve Data — not configured'
+        : identity
+          ? providerLabel(identity.dataSource)
+          : '—',
   }
 }
 
@@ -140,19 +166,21 @@ export function providerLabel(provider: string): string {
       return 'Bybit'
     case 'coingecko':
       return 'CoinGecko'
+    case 'twelvedata':
+      return 'Twelve Data'
     default:
       return provider.charAt(0).toUpperCase() + provider.slice(1)
   }
 }
 
 /**
- * Source line for a fetched series — e.g. "Binance · 1m" or, for the gold
- * proxy, "Binance · PAXG/USDT · 1h" so nobody mistakes the token market for
- * spot gold.
+ * Source line for a fetched series — e.g. "Binance · 1m" or, for Twelve Data
+ * instruments, "Twelve Data · XAU/USD · 1h" — the instrument is always shown
+ * so spot metals are never mistaken for anything else.
  */
-export function sourceLabel(coin: Coin, series: CandleSeries): string {
+export function sourceLabel(_coin: Coin, series: CandleSeries): string {
   const base = `${providerLabel(series.provider)} · ${series.granularity}`
-  return coin.id === 'gold' ? `${base} · ${series.symbol}` : base
+  return series.provider === 'twelvedata' && series.symbol ? `${base} · ${series.symbol}` : base
 }
 
 /**
@@ -160,14 +188,14 @@ export function sourceLabel(coin: Coin, series: CandleSeries): string {
  * `sourceLabel`, without requiring the whole series.
  */
 export function surfaceSource(
-  coin: Coin,
+  _coin: Coin,
   provider: string | null,
   symbol: string | null,
   granularity: string | null,
 ): string {
   if (!provider) return 'OHLC history'
   const base = `${providerLabel(provider)}${granularity ? ` · ${granularity}` : ''}`
-  return coin.id === 'gold' && symbol ? `${base} · ${symbol}` : base
+  return provider === 'twelvedata' && symbol ? `${base} · ${symbol}` : base
 }
 
 /**

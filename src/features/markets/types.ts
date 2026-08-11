@@ -103,6 +103,13 @@ export interface CoinIdentity
    */
   exchangeSymbol?: string
   /**
+   * The canonical Twelve Data instrument for this asset (e.g. "XAU/USD" for
+   * Spot Gold, "XAG/USD" for Spot Silver). Metals resolve exclusively
+   * through Twelve Data — never through a crypto token proxy. Absent when
+   * the asset has no Twelve Data symbol.
+   */
+  twelveDataSymbol?: string
+  /**
    * The TradingView chart symbol (EXCHANGE:SYMBOL) for this asset, when one
    * exists — e.g. "BITSTAMP:BTCUSD", "OANDA:XAUUSD". Absent assets show a
    * graceful chart-unavailable state instead of an unrelated instrument.
