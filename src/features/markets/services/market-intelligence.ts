@@ -30,7 +30,20 @@ import type { Candle } from './history'
 export type LiquiditySide = 'buy' | 'sell'
 export type TrendState = 'bullish' | 'bearish' | 'sideways'
 
+/**
+ * Transparency tier — how significant a level is relative to the rest of
+ * the window. Not a probability: a deterministic score bucket used to tell
+ * weak noise from structural pools.
+ */
+export type LiquidityRank = 'high' | 'medium' | 'low'
+
+/**
+ * A Forge Liquidity Zone — a price pool where liquidity is likely to rest,
+ * derived from real candle structure (swing/equal/range/previous-period
+ * extremes). Buy-side zones sit above price; sell-side zones below.
+ */
 export interface LiquidityCandidate {
+  /** Primary (extreme) price of the pool. */
   price: number
   /** 'buy' = above price (buy-side pool); 'sell' = below price. */
   side: LiquiditySide
@@ -46,6 +59,47 @@ export interface LiquidityCandidate {
   swept: boolean
   /** How many times the level has been tested. */
   touches: number
+  /** Transparent significance tier from strength + touches + sweep state. */
+  rank: LiquidityRank
+  /** Zone band — every swing clustered into this pool sits within [zoneLow, zoneHigh]. */
+  zoneLow: number
+  zoneHigh: number
+  /** Epoch ms of the candle where the zone first formed. */
+  createdAt: number
+  /** Epoch ms of the candle that traded through the zone (null if not swept). */
+  sweptAt: number | null
+  /** Price traded back through the level after the sweep (liquidity grab). */
+  returned: boolean
+}
+
+/** One deterministic sweep event — price trading THROUGH a known zone. */
+export interface SweepRecord {
+  /** Stable zone id (side + price + timeframe). */
+  zoneId: string
+  side: LiquiditySide
+  /** Direction of the trade-through relative to the zone. */
+  direction: 'up' | 'down'
+  /** Price traded through the zone. */
+  sweepPrice: number
+  /** Epoch ms of the candle that swept the zone. */
+  sweptAt: number
+  timeframe: string
+  /** Price subsequently closed back through the level (grab-and-return). */
+  returned: boolean
+}
+
+/** Development-friendly transparency — exactly what the engine consumed. */
+export interface LiquidityDiagnostics {
+  candleCount: number
+  granularity: string
+  firstCandleAt: number
+  lastCandleAt: number
+  swingHighs: number
+  swingLows: number
+  equalHighZones: number
+  equalLowZones: number
+  activeZones: number
+  sweptZones: number
 }
 
 export interface LevelCandidate {
@@ -83,6 +137,10 @@ export interface TimeframeAnalysis {
   currentPrice: number
   atr: number
   liquidity: { buySide: LiquidityCandidate[]; sellSide: LiquidityCandidate[] }
+  /** Every detected sweep event across both sides of this window. */
+  sweeps: SweepRecord[]
+  /** Full transparency view — candle counts, swing counts, zone stats. */
+  diagnostics: LiquidityDiagnostics
   support: LevelCandidate[]
   resistance: LevelCandidate[]
   structure: StructureResult | null
@@ -282,6 +340,9 @@ interface RawLevel {
   origin: number
   deviationAtp: number
   touches: number
+  /** Cluster band — all pooled swings sit within [zoneLow, zoneHigh]. */
+  zoneLow: number
+  zoneHigh: number
 }
 
 function strengthScore(deviationAtp: number, touches: number, recent: boolean, distancePercent: number): number {
@@ -308,8 +369,11 @@ function mergeEqualLevels(
   for (const pivot of filtered) {
     const existing = levels.find((level) => Math.abs(level.price - pivot.price) <= tolerance)
     if (existing) {
-      // A pool sits at its extreme — the highest high / lowest low.
+      // A pool sits at its extreme — the highest high / lowest low — and the
+      // cluster band widens to cover every swing that joined it.
       existing.price = kind === 'high' ? Math.max(existing.price, pivot.price) : Math.min(existing.price, pivot.price)
+      existing.zoneHigh = Math.max(existing.zoneHigh, pivot.price)
+      existing.zoneLow = Math.min(existing.zoneLow, pivot.price)
       existing.touches += 1
       existing.deviationAtp = Math.max(existing.deviationAtp, pivot.deviationAtp)
     } else {
@@ -320,6 +384,8 @@ function mergeEqualLevels(
         origin: pivot.index,
         deviationAtp: pivot.deviationAtp,
         touches: 1,
+        zoneLow: pivot.price,
+        zoneHigh: pivot.price,
       })
     }
   }
@@ -344,6 +410,8 @@ function consolidateLevels(levels: RawLevel[], atr: number, options: Intelligenc
       existing.touches += level.touches
       existing.deviationAtp = Math.max(existing.deviationAtp, level.deviationAtp)
       existing.origin = Math.min(existing.origin, level.origin)
+      existing.zoneHigh = Math.max(existing.zoneHigh, level.zoneHigh)
+      existing.zoneLow = Math.min(existing.zoneLow, level.zoneLow)
       if (sourceRank(level.source) > sourceRank(existing.source)) existing.source = level.source
     } else {
       result.push({ ...level })
@@ -352,7 +420,26 @@ function consolidateLevels(levels: RawLevel[], atr: number, options: Intelligenc
   return result
 }
 
-function buildSide(
+/**
+ * Transparent rank tier. Swept levels are spent (never rank high); among the
+ * rest, strength (significance + recency + proximity) decides, with a
+ * cluster of 2+ touches bumping a borderline level up a tier.
+ */
+function rankOf(strength: number, swept: boolean, touches: number): LiquidityRank {
+  if (swept) return strength > 0.6 ? 'medium' : 'low'
+  if (strength >= 0.6) return 'high'
+  if (strength >= 0.3) return 'medium'
+  if (touches >= 2) return 'medium'
+  return 'low'
+}
+
+/**
+ * Build the Liquidity Zones for one side. A zone is a price pool whose band
+ * spans every swing clustered into it; sweeps are recorded when a later
+ * candle trades THROUGH the zone (not merely touches it), noting whether
+ * price subsequently closed back through the level (liquidity grab).
+ */
+function buildZones(
   candles: Candle[],
   levels: RawLevel[],
   price: number,
@@ -360,23 +447,47 @@ function buildSide(
   timeframe: string,
   recentCutoff: number,
   max: number,
+  sweeps: SweepRecord[],
 ): LiquidityCandidate[] {
-  const candidates: LiquidityCandidate[] = []
+  const zones: LiquidityCandidate[] = []
   for (const level of levels) {
     // Buy-side pools sit above price, sell-side below.
     if (side === 'buy' && level.price <= price) continue
     if (side === 'sell' && level.price >= price) continue
 
     const distancePercent = (Math.abs(level.price - price) / price) * 100
-    // Swept: a later candle (or the live price) traded through the level.
+
+    // Sweep detection: a candle trades through the zone's far edge (high
+    // above a buy zone, low below a sell zone). Not a mere touch.
     let swept = false
+    let sweptAt: number | null = null
+    let returned = false
     for (let i = level.origin + 1; i < candles.length; i++) {
-      const traded = side === 'buy' ? candles[i].high >= level.price : candles[i].low <= level.price
-      if (traded) {
-        swept = true
-        break
+      const traded = side === 'buy' ? candles[i].high >= level.zoneHigh : candles[i].low <= level.zoneLow
+      if (!traded) continue
+      swept = true
+      sweptAt = candles[i].timestamp
+      // Returned: a candle after the sweep closes back through the primary
+      // level — the classic grab-and-return signature.
+      for (let j = i + 1; j < candles.length; j++) {
+        const back = side === 'buy' ? candles[j].close <= level.price : candles[j].close >= level.price
+        if (back) {
+          returned = true
+          break
+        }
       }
+      sweeps.push({
+        zoneId: `${side}_${Math.round(level.price)}_${timeframe}`,
+        side,
+        direction: side === 'buy' ? 'up' : 'down',
+        sweepPrice: candles[i][side === 'buy' ? 'high' : 'low'],
+        sweptAt: candles[i].timestamp,
+        timeframe,
+        returned,
+      })
+      break
     }
+
     // Equal pools only when multiple swings cluster; other sources (range,
     // previous period) keep their own honest labels.
     const source =
@@ -385,23 +496,28 @@ function buildSide(
           ? 'equal_high'
           : 'equal_low'
         : level.source
-    candidates.push({
+    const strength = strengthScore(level.deviationAtp, level.touches, level.origin >= recentCutoff, distancePercent)
+    zones.push({
       price: level.price,
       side,
       source,
       timeframe,
-      strength: strengthScore(level.deviationAtp, level.touches, level.origin >= recentCutoff, distancePercent),
+      strength,
       distancePercent: Math.round(distancePercent * 100) / 100,
       swept,
       touches: level.touches,
+      rank: rankOf(strength, swept, level.touches),
+      zoneLow: level.zoneLow,
+      zoneHigh: level.zoneHigh,
+      createdAt: candles[level.origin]?.timestamp ?? 0,
+      sweptAt,
+      returned,
     })
   }
 
   // Nearest first, then strongest — the nearest pool is what price hits next.
-  candidates.sort(
-    (a, b) => a.distancePercent - b.distancePercent || b.strength - a.strength,
-  )
-  return candidates.slice(0, max)
+  zones.sort((a, b) => a.distancePercent - b.distancePercent || b.strength - a.strength)
+  return zones.slice(0, max)
 }
 
 /* ------------------------------------------------------------------ */
@@ -507,6 +623,19 @@ export function analyzeTimeframe(
     currentPrice,
     atr: 0,
     liquidity: { buySide: [], sellSide: [] },
+    sweeps: [],
+    diagnostics: {
+      candleCount: candles.length,
+      granularity: candleGranularity,
+      firstCandleAt: candles[0]?.timestamp ?? 0,
+      lastCandleAt: candles[candles.length - 1]?.timestamp ?? 0,
+      swingHighs: 0,
+      swingLows: 0,
+      equalHighZones: 0,
+      equalLowZones: 0,
+      activeZones: 0,
+      sweptZones: 0,
+    },
     support: [],
     resistance: [],
     structure: null,
@@ -552,6 +681,8 @@ export function analyzeTimeframe(
     origin: rangeHighIndex,
     deviationAtp: 1.5,
     touches: 1,
+    zoneLow: rangeHighPrice,
+    zoneHigh: rangeHighPrice,
   }
   const rangeLow: RawLevel = {
     price: rangeLowPrice,
@@ -560,6 +691,8 @@ export function analyzeTimeframe(
     origin: rangeLowIndex,
     deviationAtp: 1.5,
     touches: 1,
+    zoneLow: rangeLowPrice,
+    zoneHigh: rangeLowPrice,
   }
   // Previous fully-closed period extreme — the last completed candle.
   const previous: RawLevel | null =
@@ -571,6 +704,8 @@ export function analyzeTimeframe(
           origin: candles.length - 2,
           deviationAtp: 0.6,
           touches: 1,
+          zoneLow: candles[candles.length - 2].high,
+          zoneHigh: candles[candles.length - 2].high,
         }
       : null
   const previousLow: RawLevel | null =
@@ -582,6 +717,8 @@ export function analyzeTimeframe(
           origin: candles.length - 2,
           deviationAtp: 0.6,
           touches: 1,
+          zoneLow: candles[candles.length - 2].low,
+          zoneHigh: candles[candles.length - 2].low,
         }
       : null
 
@@ -596,10 +733,10 @@ export function analyzeTimeframe(
     opts,
   )
 
-  const liquidity = {
-    buySide: buildSide(candles, highLevels, currentPrice, 'buy', timeframe, recentCutoff, opts.maxCandidatesPerSide),
-    sellSide: buildSide(candles, lowLevels, currentPrice, 'sell', timeframe, recentCutoff, opts.maxCandidatesPerSide),
-  }
+  const sweeps: SweepRecord[] = []
+  const buySide = buildZones(candles, highLevels, currentPrice, 'buy', timeframe, recentCutoff, opts.maxCandidatesPerSide, sweeps)
+  const sellSide = buildZones(candles, lowLevels, currentPrice, 'sell', timeframe, recentCutoff, opts.maxCandidatesPerSide, sweeps)
+  const liquidity = { buySide, sellSide }
   const { support, resistance } = buildSupportResistance(candles, pivots, atr, currentPrice, opts)
   const structure = analyzeStructure(pivots)
   const momentumRaw = momentumScore(candles, atr, opts.momentumLookback)
@@ -616,6 +753,19 @@ export function analyzeTimeframe(
     ...base,
     atr,
     liquidity,
+    sweeps: sweeps.sort((a, b) => a.sweptAt - b.sweptAt),
+    diagnostics: {
+      candleCount: candles.length,
+      granularity: candleGranularity,
+      firstCandleAt: candles[0]?.timestamp ?? 0,
+      lastCandleAt: candles[candles.length - 1]?.timestamp ?? 0,
+      swingHighs: pivots.filter((p) => p.kind === 'high').length,
+      swingLows: pivots.filter((p) => p.kind === 'low').length,
+      equalHighZones: buySide.filter((z) => z.source === 'equal_high').length,
+      equalLowZones: sellSide.filter((z) => z.source === 'equal_low').length,
+      activeZones: buySide.filter((z) => !z.swept).length + sellSide.filter((z) => !z.swept).length,
+      sweptZones: buySide.filter((z) => z.swept).length + sellSide.filter((z) => z.swept).length,
+    },
     support,
     resistance,
     structure,

@@ -64,6 +64,30 @@ export const HISTORY_WINDOW_PLANS: Record<string, HistoryWindowPlan> = {
 /** The smallest window that still yields a useful swing/ATR read. */
 export const MIN_CANDLES = 14
 
+export type HistoryWindowId = '1H' | '4H' | '1D' | '1W'
+
+/**
+ * A candle-history provider — the seam where new data sources slot in.
+ *
+ * CoinGecko's keyless API is Forge's current provider and can only publish
+ * 30m/4h/4d OHLC (no sub-30m candles). To support 1M/5M/15M later, a new
+ * provider (exchange klines, a TradingView datafeed, a licensed history
+ * vendor) implements this interface and is added to `historyProviders` —
+ * the rest of the stack (engine, hook, UI) is already provider-agnostic.
+ * No provider is ever asked for a window it does not declare.
+ */
+export interface HistoryProvider {
+  id: string
+  label: string
+  /** Windows this provider can genuinely supply — never overstated. */
+  supportedWindows: ReadonlyArray<HistoryWindowId>
+  fetchWindowCandles(
+    assetSymbol: string,
+    window: HistoryWindowId,
+    signal?: AbortSignal,
+  ): Promise<{ candles: Candle[]; granularity: string } | null>
+}
+
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value)
 
@@ -207,6 +231,32 @@ export async function fetchWindowCandles(
   // The 1D window derives daily candles from the shared 4h series.
   const candles = plan.window === '1D' ? aggregateCandles(raw, 86_400_000) : raw
   return { candles, granularity: plan.granularity }
+}
+
+/**
+ * CoinGecko keyless OHLC provider — Forge's current history source. Declares
+ * exactly the windows the public API publishes; sub-30m windows are absent
+ * on purpose (the provider does not offer them keylessly).
+ */
+export const coingeckoHistoryProvider: HistoryProvider = {
+  id: 'coingecko',
+  label: 'CoinGecko OHLC',
+  supportedWindows: ['1H', '4H', '1D', '1W'],
+  fetchWindowCandles(assetSymbol, window, signal) {
+    const plan = HISTORY_WINDOW_PLANS[window]
+    if (!plan) return Promise.resolve(null)
+    return fetchWindowCandles(assetSymbol, plan, signal)
+  },
+}
+
+/** Registered history providers, in priority order. Add sub-30m sources here. */
+export const historyProviders: HistoryProvider[] = [coingeckoHistoryProvider]
+
+/** Resolve the provider responsible for a window, or null if none can supply it. */
+export function providerForWindow(window: string): HistoryProvider | null {
+  const id = (Object.keys(HISTORY_WINDOW_PLANS) as HistoryWindowId[]).find((w) => w === window)
+  if (!id) return null
+  return historyProviders.find((provider) => provider.supportedWindows.includes(id)) ?? null
 }
 
 /** Drop every cached series — used by tests and manual cache busts. */

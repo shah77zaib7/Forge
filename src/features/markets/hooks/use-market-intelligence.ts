@@ -104,7 +104,21 @@ export function useMarketIntelligence(
   // pure recompute; the candle series and network are untouched.
   const analysis = useMemo<TimeframeAnalysis | null>(() => {
     if (!candles) return null
-    return analyzeTimeframe(candles, coin?.price ?? 0, timeframeId, granularity)
+    const result = analyzeTimeframe(candles, coin?.price ?? 0, timeframeId, granularity)
+    // Development transparency: the full engine trace (candle count, swing
+    // counts, equal zones, active/swept zones, data window) is inspectable
+    // from the console without a UI redesign.
+    if (import.meta.env.DEV) {
+      ;(window as unknown as { __forgeLiquidity?: unknown }).__forgeLiquidity = {
+        asset: coin?.id,
+        timeframe: timeframeId,
+        price: coin?.price,
+        diagnostics: result.diagnostics,
+        sweeps: result.sweeps,
+        zones: [...result.liquidity.buySide, ...result.liquidity.sellSide],
+      }
+    }
+    return result
   }, [candles, coin?.price, timeframeId, granularity])
 
   const noCoverage = !coin || coin.dataSource !== 'coingecko'

@@ -54,6 +54,13 @@ function levelDetails(level: LevelCandidate | LiquidityCandidate): Array<{ label
     { label: 'Strength', value: `${Math.round(level.strength * 100)}%` },
   ]
   if ('touches' in level && level.touches > 1) details.push({ label: 'Tests', value: `${level.touches}` })
+  if ('rank' in level) details.push({ label: 'Rank', value: level.rank[0].toUpperCase() + level.rank.slice(1) })
+  if ('zoneLow' in level && level.zoneHigh !== level.zoneLow) {
+    details.push({
+      label: 'Zone',
+      value: `${formatMarketPrice(level.zoneLow)} – ${formatMarketPrice(level.zoneHigh)}`,
+    })
+  }
   if ('swept' in level && level.swept) details.push({ label: 'State', value: 'Swept' })
   return details
 }
