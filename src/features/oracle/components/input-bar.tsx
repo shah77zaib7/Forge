@@ -277,9 +277,14 @@ export function InputBar({
         </div>
       </div>
 
-      <p aria-live="polite" className="mt-2 h-4 text-center text-[11px] text-faint">
-        {status}
-      </p>
+      {/* Transient status (Listening… / Transcribed) — rendered only while it
+          has content so the idle composer hugs the bottom edge instead of
+          reserving a permanent empty line. */}
+      {status && (
+        <p aria-live="polite" className="mt-2 text-center text-[11px] text-faint">
+          {status}
+        </p>
+      )}
     </div>
   )
 }

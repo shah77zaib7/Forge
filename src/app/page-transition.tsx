@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from 'framer-motion'
-import { useRef, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 
 import { ease } from '@/design/motion'
 
@@ -11,6 +11,19 @@ import { ease } from '@/design/motion'
 export function PageTransition({ children }: { children: ReactNode }) {
   const reduceMotion = useReducedMotion()
   const ref = useRef<HTMLDivElement>(null)
+
+  // Any non-none filter (or transform) creates a containing block for
+  // position:fixed descendants. onAnimationComplete normally strips the
+  // entrance blur, but if it never fires (interrupted animation, backgrounded
+  // tab) the lingering blur(0px) would hijack fixed composers for the rest of
+  // the page's life. Strip deterministically once the entrance has settled.
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      ref.current?.style.removeProperty('filter')
+      ref.current?.style.removeProperty('transform')
+    }, 650)
+    return () => window.clearTimeout(id)
+  }, [])
 
   if (reduceMotion) {
     return (

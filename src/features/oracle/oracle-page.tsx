@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { MarketDataError, MarketDataLoading } from '@/features/markets/components/market-data-states'
 import {
   DEFAULT_LIQUIDITY_TIMEFRAME,
@@ -61,6 +63,17 @@ export function OraclePage() {
   const [contextOpen, setContextOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [saved, setSaved] = useState<SavedAnalysis[]>(() => loadSavedAnalyses())
+  // The mobile composer is portaled to <body> so no routed-content ancestor
+  // (the page-transition wrapper animates filter/transform, which act as a
+  // containing block for position:fixed) can ever move it off the viewport.
+  const isDesktop = useMediaQuery('(min-width: 1024px)')
+  const [composerHost] = useState(() => document.createElement('div'))
+  useEffect(() => {
+    document.body.appendChild(composerHost)
+    return () => {
+      document.body.removeChild(composerHost)
+    }
+  }, [composerHost])
   // Ref guards — close the double-submit / double-regenerate races before
   // state propagates.
   const sendingRef = useRef(false)
@@ -319,24 +332,46 @@ export function OraclePage() {
             onPickSuggestion={handlePick}
           />
 
-          {/* Floating composer — fixed to the viewport bottom on mobile,
-              sticky inside the column on desktop. Messages scroll beneath
-              its gradient fade either way. */}
-          <div
-            ref={composerRef}
-            className="fixed inset-x-0 bottom-0 z-20 bg-gradient-to-t from-background via-background/90 to-transparent px-4 pb-[max(env(safe-area-inset-bottom,0px),1rem)] pt-6 sm:px-6 lg:sticky lg:inset-x-auto lg:px-0"
-          >
-            <InputBar
-              onSend={handleComposerSend}
-              disabled={thinking}
-              activeCoin={activeCoin}
-              mode={mode}
-              onModeChange={setMode}
-              onOpenContext={() => setContextOpen(true)}
-              onOpenHistory={() => setHistoryOpen(true)}
-              historyCount={saved.length}
-            />
-          </div>
+          {/* Floating composer — pinned to the viewport bottom on mobile
+              via a portal to <body> (immune to the page transition's
+              filter/transform), sticky inside the column on desktop.
+              Messages scroll beneath its gradient fade either way. */}
+          {isDesktop ? (
+            <div
+              ref={composerRef}
+              className="sticky bottom-0 z-20 bg-gradient-to-t from-background via-background/90 to-transparent px-0 pb-[max(env(safe-area-inset-bottom,0px),1rem)] pt-6"
+            >
+              <InputBar
+                onSend={handleComposerSend}
+                disabled={thinking}
+                activeCoin={activeCoin}
+                mode={mode}
+                onModeChange={setMode}
+                onOpenContext={() => setContextOpen(true)}
+                onOpenHistory={() => setHistoryOpen(true)}
+                historyCount={saved.length}
+              />
+            </div>
+          ) : (
+            createPortal(
+              <div
+                ref={composerRef}
+                className="fixed inset-x-0 bottom-0 z-20 bg-gradient-to-t from-background via-background/90 to-transparent px-4 pb-[max(env(safe-area-inset-bottom,0px),0.5rem)] pt-6 sm:px-6"
+              >
+                <InputBar
+                  onSend={handleComposerSend}
+                  disabled={thinking}
+                  activeCoin={activeCoin}
+                  mode={mode}
+                  onModeChange={setMode}
+                  onOpenContext={() => setContextOpen(true)}
+                  onOpenHistory={() => setHistoryOpen(true)}
+                  historyCount={saved.length}
+                />
+              </div>,
+              composerHost,
+            )
+          )}
         </div>
 
         {/* Desktop context rail */}
