@@ -14,8 +14,10 @@ import type { AiModelId } from '../types'
  * persists the choice. Unavailable models are visibly disabled with the
  * key NAME they need (never a value). When the availability report is
  * unreachable (local dev), only the Local engine is enabled — honest.
+ * `dropUp` opens the list above the trigger — used in the bottom-anchored
+ * Oracle composer where a downward list would overflow the viewport.
  */
-export function ModelSelector({ className }: { className?: string }) {
+export function ModelSelector({ className, dropUp = false }: { className?: string; dropUp?: boolean }) {
   const { modelId, setModelId, models, available, gatewayOf, requiresOf, fetchState, refreshAvailability } = useAi()
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -71,13 +73,16 @@ export function ModelSelector({ className }: { className?: string }) {
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, y: 4, scale: 0.98 }}
+            initial={{ opacity: 0, y: dropUp ? -4 : 4, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 4, scale: 0.98 }}
+            exit={{ opacity: 0, y: dropUp ? -4 : 4, scale: 0.98 }}
             transition={{ duration: 0.18 }}
             role="listbox"
             aria-label="Oracle models"
-            className="absolute right-0 z-40 mt-2 w-60 overflow-hidden rounded-2xl border border-border bg-surface-2/95 p-1.5 shadow-float backdrop-blur-xl"
+            className={cn(
+              'absolute right-0 z-40 w-60 overflow-hidden rounded-2xl border border-border bg-surface-2/95 p-1.5 shadow-float backdrop-blur-xl',
+              dropUp ? 'bottom-full mb-2' : 'mt-2',
+            )}
           >
             <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-[0.16em] text-faint">
               Oracle model

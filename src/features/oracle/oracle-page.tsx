@@ -400,6 +400,7 @@ export function OraclePage() {
             coin={activeCoin}
             timeframeId={timeframeId}
             mode={mode}
+            modelLabel={modelInfo(modelId).label}
             onStreamed={handleStreamed}
             onRegenerate={handleRegenerate}
             onSave={handleSave}

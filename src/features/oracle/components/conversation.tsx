@@ -213,10 +213,12 @@ function ThinkingSkeleton({
   coin,
   timeframeId,
   mode,
+  modelLabel,
 }: {
   coin: Coin
   timeframeId: LiquidityTimeframeId
   mode: OracleMode
+  modelLabel: string
 }) {
   const [step, setStep] = useState(0)
   const steps = THINK_STEPS.map((label, index) =>
@@ -240,7 +242,9 @@ function ThinkingSkeleton({
             <Orbit size={15} strokeWidth={1.75} className="text-muted" />
           </motion.span>
           <div>
-            <p className="text-xs font-medium text-foreground">Analyzing {coin.name}</p>
+            <p className="text-xs font-medium text-foreground">
+              Analyzing {coin.name} · {modelLabel}
+            </p>
             <p className="text-[11px] text-faint">Reading the {timeframeId} window across five lenses…</p>
           </div>
         </div>
@@ -319,6 +323,7 @@ export function Conversation({
   coin,
   timeframeId,
   mode,
+  modelLabel,
   onStreamed,
   onRegenerate,
   onSave,
@@ -330,6 +335,8 @@ export function Conversation({
   coin: Coin
   timeframeId: LiquidityTimeframeId
   mode: OracleMode
+  /** The active Oracle model — shown while a request is in flight. */
+  modelLabel: string
   onStreamed: (id: string) => void
   onRegenerate: (id: string) => void
   onSave?: (message: OracleMessage) => 'saved' | 'exists' | null
@@ -397,7 +404,7 @@ export function Conversation({
         )
       })}
 
-      {isThinking && <ThinkingSkeleton coin={coin} timeframeId={timeframeId} mode={mode} />}
+      {isThinking && <ThinkingSkeleton coin={coin} timeframeId={timeframeId} mode={mode} modelLabel={modelLabel} />}
       {/* scroll-margin keeps the newest card clear of the floating composer —
           sized from the same measured --forge-composer-h as the page clearance. */}
       <div ref={bottomRef} className="h-1 scroll-mb-[var(--forge-composer-h,13.5rem)]" />

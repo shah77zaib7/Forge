@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { ArrowUp, CandlestickChart, History, Mic, SlidersHorizontal, X } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 
+import { ModelSelector } from '@/features/ai/components/model-selector'
 import { AssetIcon } from '@/features/markets/components/asset-icon'
 import type { Coin } from '@/features/markets/types'
 import { SegmentedControl } from '@/components/ui/segmented-control'
@@ -149,7 +150,10 @@ export function InputBar({
           onChange={onModeChange}
           aria-label="Oracle mode"
         />
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          {/* The active Oracle model — dropUp because the composer hugs the
+              bottom of the viewport, so the list must open upward. */}
+          <ModelSelector dropUp />
           {onOpenHistory && (
             <button
               type="button"

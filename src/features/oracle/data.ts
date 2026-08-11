@@ -42,13 +42,16 @@ export function newId(): string {
 /** How long the staged thinking phase runs before a response streams in. */
 export const THINK_DURATION = 3100
 
-/** The staged analysis steps shown while Oracle "thinks". */
+/** The staged analysis steps shown while Oracle "thinks" — aligned to the
+ *  user's trading methodology (liquidity sweep → displacement → setup).
+ *  The sequence advances only while the real request is in flight.
+ */
 export const THINK_STEPS = [
   'Reading market structure',
   'Checking liquidity',
-  'Finding support & resistance',
-  'Evaluating momentum',
-  'Building response',
+  'Detecting displacement',
+  'Evaluating the setup',
+  'Generating analysis',
 ] as const
 
 /** Friendly date for saved analyses — \"Today · 5:42 PM\", \"Yesterday\", \"Aug 6\". */
