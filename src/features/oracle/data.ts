@@ -145,6 +145,30 @@ export function cardToText(card: OracleCard): string {
         'What to watch:',
         ...card.watch.map((point) => `• ${point}`),
       ].join('\n')
+    case 'ai':
+      return [
+        `Oracle Analysis — ${card.analysis.sourceData.symbol} · ${card.analysis.sourceData.timeframe} · ${card.modelLabel}`,
+        `Bias: ${card.analysis.bias} · Confidence: ${card.analysis.confidence}%`,
+        '',
+        `Summary: ${card.analysis.summary}`,
+        '',
+        `Setup: ${card.analysis.setup.family} (${card.analysis.setup.level})${card.analysis.setup.direction ? ` · ${card.analysis.setup.direction}` : ''}`,
+        card.analysis.setup.entryArea ? `Entry area: ${card.analysis.setup.entryArea}` : null,
+        `Invalidation: ${card.analysis.invalidation ?? 'none supplied'}`,
+        '',
+        'Reasoning:',
+        ...card.analysis.reasoning.map((point) => `• ${point}`),
+        '',
+        'Risks:',
+        ...card.analysis.risks.map((point) => `• ${point}`),
+        '',
+        `Source: ${card.analysis.sourceData.source} · ${card.analysis.sourceData.symbol} · ${card.analysis.sourceData.timeframe} · ${card.analysis.sourceData.candleCount} candles · ${card.analysis.sourceData.freshness}`,
+        ...(card.meta ? [`Provider: ${card.meta.provider}${card.meta.estimatedCostUsd !== null ? ` · ~$${card.meta.estimatedCostUsd.toFixed(4)} est` : ''}`] : []),
+      ]
+        .filter((line): line is string => line !== null)
+        .join('\n')
+    case 'ai-error':
+      return `${card.modelLabel} could not complete the analysis (${card.code})\n\n${card.message}${card.detail ? `\n\n${card.detail}` : ''}`
   }
 }
 
@@ -165,6 +189,10 @@ export function cardSummary(card: OracleCard): string {
       return `${card.primary.ticker} vs ${card.secondary.ticker}`
     case 'market-brief':
       return card.headline
+    case 'ai':
+      return `Bias ${card.analysis.bias} · ${card.analysis.confidence}% · ${card.analysis.setup.family}`
+    case 'ai-error':
+      return `${card.modelLabel} — ${card.code}`
   }
 }
 

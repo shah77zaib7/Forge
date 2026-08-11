@@ -1,6 +1,7 @@
 import { MotionConfig } from 'framer-motion'
 import { BrowserRouter } from 'react-router-dom'
 
+import { AiProvider } from '@/features/ai/store'
 import { FavoritesProvider } from '@/store/favorites'
 import { MarketDataProvider } from '@/store/market-data'
 import { PreferencesProvider } from '@/store/preferences'
@@ -15,6 +16,8 @@ import { ThemeProvider } from './theme'
 export function App() {
   return (
     <ThemeProvider>
+      {/* Oracle model selection + availability — independent of market data. */}
+      <AiProvider>
       <FavoritesProvider>
         <PreferencesProvider>
           {/* The alert engine subscribes to the canonical market-data store
@@ -39,6 +42,7 @@ export function App() {
           </AlertsProvider>
         </PreferencesProvider>
       </FavoritesProvider>
+      </AiProvider>
     </ThemeProvider>
   )
 }

@@ -1,5 +1,6 @@
 import type { Coin } from '@/features/markets/types'
 import type { LiquidityTimeframe, LiquidityTimeframeId, Tone } from '@/features/workspace/data'
+import type { OracleAnalysis, OracleRequestMeta } from '@/features/ai/types'
 
 /** Analyst persona — Trader keeps it actionable, Teacher explains why. */
 export type OracleMode = 'trader' | 'teacher'
@@ -106,6 +107,28 @@ export interface MarketBriefCard {
   watch: string[]
 }
 
+/** A real AI analysis — the normalized output of the Oracle model router.
+ *  Provenance (sourceData, model, timestamp) is stamped server-side. */
+export interface AiAnalysisCard {
+  kind: 'ai'
+  /** The normalized analysis from /api/oracle/analyze (or the Local engine). */
+  analysis: OracleAnalysis
+  /** Request metadata — provider, tokens, estimated cost. Never keys. */
+  meta: OracleRequestMeta | null
+  /** Human label of the model that produced the read. */
+  modelLabel: string
+}
+
+/** An honest failure — shown instead of pretending the analysis succeeded. */
+export interface AiErrorCard {
+  kind: 'ai-error'
+  /** Typed failure code: not_configured / rate_limit / provider_error / … */
+  code: string
+  message: string
+  detail?: string
+  modelLabel: string
+}
+
 export type OracleCard =
   | AnalysisCard
   | LiquidityCard
@@ -114,6 +137,8 @@ export type OracleCard =
   | WarningCard
   | ComparisonCard
   | MarketBriefCard
+  | AiAnalysisCard
+  | AiErrorCard
 
 export interface OracleMessage {
   id: string

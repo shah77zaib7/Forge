@@ -12,6 +12,7 @@ import {
   Newspaper,
   RefreshCw,
   Share,
+  Sparkles,
   Target,
   type LucideIcon,
 } from 'lucide-react'
@@ -25,6 +26,8 @@ import { cn } from '@/lib/cn'
 import { cardToText } from '../data'
 import { useProgressive } from '../hooks/use-oracle-stream'
 import type {
+  AiAnalysisCard,
+  AiErrorCard,
   AnalysisCard,
   ComparisonCard,
   EducationalCard,
@@ -748,6 +751,208 @@ const WarningCardView = memo(function WarningCardView({
 })
 
 /* ------------------------------------------------------------------ */
+/* AI analysis — the normalized model router output                    */
+/* ------------------------------------------------------------------ */
+
+function biasTone(bias: AiAnalysisCard['analysis']['bias']): 'positive' | 'negative' | 'neutral' {
+  return bias === 'bullish' ? 'positive' : bias === 'bearish' ? 'negative' : 'neutral'
+}
+
+function formatLatency(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
+const AiAnalysisCardView = memo(function AiAnalysisCardView({
+  card,
+  footer,
+}: {
+  card: AiAnalysisCard
+  footer?: ReactNode
+}) {
+  const { analysis, meta } = card
+  const tone = biasTone(analysis.bias)
+  const setup = analysis.setup
+
+  const setupLine =
+    setup.family === 'none'
+      ? 'No setup is forming in this window.'
+      : [
+          setup.family.replace(/_/g, ' '),
+          setup.level,
+          setup.direction ? `· ${setup.direction}` : '',
+        ]
+          .filter(Boolean)
+          .join(' · ')
+
+  return (
+    <GlassCard className="overflow-hidden">
+      <CardHeader
+        icon={Sparkles}
+        title="Oracle Analysis"
+        subtitle={`${analysis.sourceData.symbol} · ${analysis.sourceData.timeframe} · ${card.modelLabel}`}
+        badge={
+          <Badge variant={tone} size="sm">
+            {analysis.bias}
+          </Badge>
+        }
+      />
+
+      <div className="space-y-5 p-5 sm:p-6">
+        <Reveal visible>
+          <p className="text-sm leading-relaxed text-foreground/90">{analysis.summary}</p>
+        </Reveal>
+
+        <Reveal visible>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-panel border border-border bg-tint/[0.03] p-3.5">
+              <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-faint">Setup</p>
+              <p className="mt-1.5 text-[13px] font-medium capitalize text-foreground">{setupLine}</p>
+              {setup.entryArea && <p className="mt-1 text-[11px] text-muted">{setup.entryArea}</p>}
+            </div>
+            <div className="rounded-panel border border-border bg-tint/[0.03] p-3.5">
+              <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-faint">
+                Nearest liquidity
+              </p>
+              <p className="mt-1.5 font-mono text-[13px] tabular-nums text-foreground">
+                {analysis.liquidity.nearestBuy ? `${analysis.liquidity.nearestBuy} above` : '— above'}
+              </p>
+              <p className="mt-1 font-mono text-[13px] tabular-nums text-foreground">
+                {analysis.liquidity.nearestSell ? `${analysis.liquidity.nearestSell} below` : '— below'}
+              </p>
+            </div>
+            <div className="rounded-panel border border-border bg-tint/[0.03] p-3.5">
+              <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-faint">Invalidation</p>
+              <p className="mt-1.5 text-[13px] leading-snug text-foreground">
+                {analysis.invalidation ?? 'None supplied'}
+              </p>
+            </div>
+          </div>
+        </Reveal>
+
+        {analysis.liquidity.notes.length > 0 && (
+          <CardSection visible label="Liquidity notes">
+            <BulletList items={analysis.liquidity.notes} />
+          </CardSection>
+        )}
+
+        <Reveal visible>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-panel border border-border bg-tint/[0.03] p-3.5">
+              <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-faint">Displacement</p>
+              <p className="mt-1.5 text-[13px] font-medium text-foreground">
+                {analysis.displacement.present
+                  ? `${analysis.displacement.direction ?? '—'} · strength ${analysis.displacement.strength ?? '—'}/100`
+                  : 'Not detected in this window'}
+              </p>
+              {analysis.displacement.notes.length > 0 && (
+                <p className="mt-1 text-[11px] text-muted">{analysis.displacement.notes.join(' · ')}</p>
+              )}
+            </div>
+            <div className="rounded-panel border border-border bg-tint/[0.03] p-3.5">
+              <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-faint">Confirmation</p>
+              <p className="mt-1.5 text-[13px] font-medium text-foreground">
+                {analysis.confirmation.present ? (analysis.confirmation.kind ?? 'present') : 'None yet'}
+              </p>
+              {analysis.confirmation.description && (
+                <p className="mt-1 text-[11px] text-muted">{analysis.confirmation.description}</p>
+              )}
+            </div>
+          </div>
+        </Reveal>
+
+        <Reveal visible>
+          <ConfidenceMeter value={analysis.confidence} tone={tone} className="w-full sm:w-64" />
+        </Reveal>
+
+        {analysis.reasoning.length > 0 && (
+          <CardSection visible label="Why Oracle read it this way">
+            <BulletList items={analysis.reasoning} />
+          </CardSection>
+        )}
+
+        {analysis.risks.length > 0 && (
+          <CardSection visible label="Risks">
+            <div className="rounded-panel border border-warning/25 bg-warning/[0.06] p-3.5">
+              <ul className="space-y-2">
+                {analysis.risks.map((risk) => (
+                  <li key={risk} className="flex items-start gap-2.5 text-[13px] leading-relaxed text-foreground/85">
+                    <AlertTriangle size={12} strokeWidth={1.75} className="mt-1 shrink-0 text-warning" />
+                    {risk}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </CardSection>
+        )}
+
+        {/* Provenance — server-stamped data facts + request metadata. */}
+        <Reveal visible>
+          <div className="rounded-panel border border-border/70 bg-tint/[0.02] px-3.5 py-3">
+            <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-faint">Source data</p>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-muted">
+              {analysis.sourceData.source} · {analysis.sourceData.symbol} · {analysis.sourceData.timeframe} ·{' '}
+              {analysis.sourceData.candleCount} candles · freshness:{' '}
+              <span className={analysis.sourceData.freshness === 'live' ? 'text-positive' : 'text-muted'}>
+                {analysis.sourceData.freshness}
+              </span>
+              {!analysis.sourceData.dataComplete && ' · incomplete data'}
+            </p>
+            {meta && (
+              <p className="mt-1 text-[11px] text-faint">
+                {meta.provider} · {formatLatency(meta.latencyMs)}
+                {meta.promptTokens !== null && meta.completionTokens !== null
+                  ? ` · ${meta.promptTokens + meta.completionTokens} tokens`
+                  : ''}
+                {meta.estimatedCostUsd !== null ? ` · ~$${meta.estimatedCostUsd.toFixed(4)} est` : ''}
+              </p>
+            )}
+          </div>
+        </Reveal>
+
+        {footer}
+      </div>
+    </GlassCard>
+  )
+})
+
+/* ------------------------------------------------------------------ */
+/* AI error — an honest failure, never a silent pretend-success        */
+/* ------------------------------------------------------------------ */
+
+const AiErrorCardView = memo(function AiErrorCardView({
+  card,
+  footer,
+}: {
+  card: AiErrorCard
+  footer?: ReactNode
+}) {
+  return (
+    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: ease.smooth }}>
+      <div className="rounded-panel border border-warning/30 bg-warning/[0.07] p-5">
+        <div className="flex items-center gap-2.5">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-warning/30 bg-warning/10">
+            <AlertTriangle size={14} strokeWidth={1.75} className="text-warning" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold tracking-tight text-foreground">
+              {card.modelLabel} could not complete the analysis
+            </p>
+            <p className="truncate font-mono text-[10px] uppercase tracking-[0.12em] text-warning/90">{card.code}</p>
+          </div>
+        </div>
+        <p className="mt-3 text-[13px] leading-relaxed text-foreground/85">{card.message}</p>
+        {card.detail && <p className="mt-1.5 text-xs leading-relaxed text-muted">{card.detail}</p>}
+        <p className="mt-3 text-[11px] text-faint">
+          Your chart and market data are unaffected. You can retry, or switch models in the Oracle model selector.
+        </p>
+      </div>
+      {footer && <div className="mt-2 px-1">{footer}</div>}
+    </motion.div>
+  )
+})
+
+/* ------------------------------------------------------------------ */
 /* Router                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -800,5 +1005,9 @@ export function OracleResponseCard({
       return <EducationalCardView card={card} streaming={streaming} progress={progress} footer={footer} />
     case 'warning':
       return <WarningCardView card={card} progress={progress} footer={footer} />
+    case 'ai':
+      return <AiAnalysisCardView card={card} footer={footer} />
+    case 'ai-error':
+      return <AiErrorCardView card={card} footer={footer} />
   }
 }

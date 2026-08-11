@@ -1,4 +1,5 @@
 import { GlassCard } from '@/components/ui/glass-card'
+import { ModelSelector } from '@/features/ai/components/model-selector'
 import { TradingViewChart } from '@/features/chart/tradingview-chart'
 import type { Coin } from '@/features/markets/types'
 
@@ -20,7 +21,7 @@ import { SectionHeading } from './section-heading'
 export function HeroChart({ coin, timeframe }: { coin: Coin; timeframe: LiquidityTimeframe }) {
   return (
     <section id="forge-chart" className="scroll-mt-24">
-      <SectionHeading eyebrow="01 — Chart" title="Price action" />
+      <SectionHeading eyebrow="01 — Chart" title="Price action" meta={<ModelSelector />} />
       <GlassCard className="mt-4 overflow-hidden">
         <TradingViewChart symbol={coin.tvSymbol ?? null} className="h-[440px] sm:h-[520px]" />
         <LiquidityLadder coin={coin} timeframe={timeframe} />

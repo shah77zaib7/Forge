@@ -5,6 +5,7 @@ import {
   BrainCircuit,
   Layers,
   Newspaper,
+  Sparkles,
   Target,
   type LucideIcon,
 } from 'lucide-react'
@@ -28,5 +29,9 @@ export function cardKindIcon(kind: OracleCard['kind']): LucideIcon {
       return ArrowLeftRight
     case 'market-brief':
       return Newspaper
+    case 'ai':
+      return Sparkles
+    case 'ai-error':
+      return AlertTriangle
   }
 }

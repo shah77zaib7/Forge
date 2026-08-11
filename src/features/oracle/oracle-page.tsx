@@ -13,24 +13,22 @@ import type { Coin } from '@/features/markets/types'
 import { useCoins, useMarketData } from '@/store/market-data'
 import { usePreferences } from '@/store/preferences'
 
+import { buildOracleRequest } from '@/features/ai/build-request'
+import { callOracle, localAnalysis, OracleClientError } from '@/features/ai/client'
+import { modelInfo } from '@/features/ai/models'
+import { useAi } from '@/features/ai/store'
+
 import { Conversation } from './components/conversation'
 import { HistorySheet } from './components/history-sheet'
 import { InputBar } from './components/input-bar'
 import { MarketContextSheet } from './components/market-context-sheet'
 import { OracleSidebar } from './components/sidebar'
-import { cardSummary, marketHealth, newId, nowLabel, THINK_DURATION } from './data'
+import { cardSummary, marketHealth, newId, nowLabel } from './data'
 import { useMarketIntelligence } from '@/features/markets/hooks/use-market-intelligence'
 import { surfaceSource } from '@/features/markets/services/market-router'
 import { buildMarketContext } from './services/market-context'
 import { loadSavedAnalyses, persistSavedAnalyses } from './services/history'
-import { oracleService } from './services/oracle-service'
-import type {
-  ConversationContext,
-  OracleMessage,
-  OracleMode,
-  SavedAnalysis,
-  Suggestion,
-} from './types'
+import type { OracleMessage, OracleMode, SavedAnalysis, Suggestion } from './types'
 
 /**
  * Oracle — Forge's command center. A calm conversation with a market
@@ -38,12 +36,15 @@ import type {
  * context rail on desktop (full Market Context sheet on demand), a
  * Trader/Teacher mode, and locally saved analyses.
  *
- * All responses come from the MockOracleService — a deterministic engine
- * behind the OracleService contract, so a real AI can replace it later
- * without UI changes. Market data is live, from the shared store.
+ * Responses route ONE normalized payload (real candles + Liquidity Model +
+ * Setup Intelligence) through the selected Oracle model — the deterministic
+ * Local engine by default, or the server model router (Claude/GPT/Gemini/
+ * AgentRouter) when configured. Failures surface as honest error cards.
+ * Market data is live, from the shared store.
  */
 export function OraclePage() {
   const { preferences } = usePreferences()
+  const { modelId } = useAi()
   const coins = useCoins()
   const { loading, refresh } = useMarketData()
   const [messages, setMessages] = useState<OracleMessage[]>([])
@@ -152,62 +153,113 @@ export function OraclePage() {
   )
   const hasStreaming = messages.some((message) => message.streaming)
 
+  // A live mirror of the state the async response flow needs AFTER the
+  // render that switched the coin/timeframe — so a hint that pins another
+  // asset analyzes that asset's real data, never the previous window's.
+  const stateRef = useRef({ activeCoin, timeframe, intelligence, snapshot })
+  stateRef.current = { activeCoin, timeframe, intelligence, snapshot }
+
+  /** Wait until the window's intelligence has settled (ready/insufficient/error). */
+  async function waitForWindow(coinId: string, tfId: LiquidityTimeframeId, timeoutMs: number) {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      const current = stateRef.current
+      if (current.activeCoin.id === coinId && current.timeframe.id === tfId) {
+        const status = current.intelligence.status
+        if (status === 'ready' || status === 'insufficient' || status === 'error') return
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 150))
+    }
+  }
+
   /**
-   * Core response flow — resolve the question against the conversation
-   * context, enter the staged thinking phase, then stream the composed
-   * card(s). Shared by a fresh user turn and Regenerate.
+   * Core response flow — resolves the analysis target (hints may pin a
+   * coin/timeframe), waits for that window's real intelligence, then routes
+   * ONE normalized payload through the selected Oracle model (Local engine
+   * or the server model router). Failures surface as honest error cards.
+   * Shared by a fresh user turn and Regenerate.
    */
   const runResponse = useCallback(
-    (prompt: string, hints: { coinId?: string; timeframeId?: LiquidityTimeframeId }, exchange: string) => {
+    async (prompt: string, hints: { coinId?: string; timeframeId?: LiquidityTimeframeId }, exchange: string) => {
       if (sendingRef.current) return
       sendingRef.current = true
-
-      const conversation: ConversationContext = {
-        coin: activeCoin,
-        timeframe,
-        mode,
-        recentUserMessages: messagesRef.current
-          .filter((m) => m.role === 'user')
-          .slice(-6)
-          .map((m) => m.text ?? ''),
-        recentPrompts: messagesRef.current
-          .filter((m) => m.role === 'oracle' && m.prompt)
-          .slice(-6)
-          .map((m) => m.prompt!),
-      }
-      const response = oracleService.respond({
-        userMessage: prompt,
-        conversation,
-        mode,
-        coinIdHint: hints.coinId,
-        timeframeIdHint: hints.timeframeId,
-      })
-
-      setActiveCoinId(response.coin.id)
-      setTimeframeId(response.timeframe.id)
       setThinking(true)
 
-      // Staged thinking phase, then the cards stream themselves in.
-      window.setTimeout(() => {
-        setMessages((ms) => [
-          ...ms,
-          ...response.cards.map((card) => ({
-            id: newId(),
-            role: 'oracle' as const,
-            time: nowLabel(),
-            card,
-            streaming: true,
-            prompt,
-            coinId: response.coin.id,
-            timeframeId: response.timeframe.id,
-            exchange,
-          })),
-        ])
+      const targetCoinId = hints.coinId ?? stateRef.current.activeCoin.id
+      const targetTfId = hints.timeframeId ?? stateRef.current.timeframe.id
+      if (hints.coinId && hints.coinId !== stateRef.current.activeCoin.id) setActiveCoinId(hints.coinId)
+      if (hints.timeframeId && hints.timeframeId !== stateRef.current.timeframe.id) setTimeframeId(hints.timeframeId)
+
+      // The switch above re-fetches the window's candles — wait for it to
+      // settle (bounded) so the payload carries the RIGHT asset's data.
+      await waitForWindow(targetCoinId, targetTfId, 6000)
+
+      const current = stateRef.current
+      const targetCoin = current.activeCoin
+      const targetTimeframe = current.timeframe
+      const selected = modelId
+      const isLocal = selected === 'local'
+
+      const request = buildOracleRequest({
+        coin: targetCoin,
+        timeframeId: targetTimeframe.id,
+        analysis: current.intelligence.analysis,
+        candles: current.intelligence.candles,
+        snapshot: current.snapshot,
+        source: current.snapshot?.source ?? 'unknown',
+        freshness: current.intelligence.freshness,
+        requestedAnalysis: prompt,
+        mode,
+        responseDetail: 'default',
+      })
+      request.model = selected
+
+      const base = {
+        role: 'oracle' as const,
+        time: nowLabel(),
+        streaming: false as const,
+        prompt,
+        coinId: targetCoin.id,
+        timeframeId: targetTimeframe.id,
+        exchange,
+      }
+
+      try {
+        const result = isLocal ? localAnalysis(request) : await callOracle(request)
+        const message: OracleMessage = {
+          ...base,
+          id: newId(),
+          card: {
+            kind: 'ai',
+            analysis: result.analysis,
+            meta: result.meta,
+            modelLabel: modelInfo(selected).label,
+          },
+        }
+        setMessages((ms) => [...ms, message])
+      } catch (cause) {
+        const error =
+          cause instanceof OracleClientError
+            ? cause
+            : new OracleClientError('service_unavailable', 'Oracle could not complete the analysis.')
+        const message: OracleMessage = {
+          ...base,
+          id: newId(),
+          card: {
+            kind: 'ai-error',
+            code: error.code,
+            message: error.message,
+            detail: error.detail,
+            modelLabel: modelInfo(selected).label,
+          },
+        }
+        setMessages((ms) => [...ms, message])
+      } finally {
         setThinking(false)
         sendingRef.current = false
-      }, THINK_DURATION)
+      }
     },
-    [activeCoin, timeframe, mode],
+    [mode, modelId],
   )
 
   function send(text: string, coinId?: string, chart?: Coin) {
