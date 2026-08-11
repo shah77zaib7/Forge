@@ -21,7 +21,12 @@ export async function callGemini(
     body: JSON.stringify({
       system_instruction: { parts: [{ text: options.system }] },
       contents: [{ role: 'user', parts: [{ text: options.user }] }],
-      generationConfig: { maxOutputTokens: 2000, temperature: 0.2 },
+      // responseMimeType 'application/json' is Gemini's NATIVE structured
+      // output — the model is constrained to emit pure JSON (no fences, no
+      // prose), which is what made earlier responses unparseable. Deliberately
+      // no strict responseJsonSchema: it could 400 on older GEMINI_MODEL
+      // overrides, and the prompt already defines the exact object shape.
+      generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 2000, temperature: 0.2 },
     }),
     signal: mergeSignal(options.signal),
   })

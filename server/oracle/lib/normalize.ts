@@ -8,19 +8,79 @@ import type { OracleAnalysis, OracleApiRequest } from './types'
  * request facts, so a model can never claim data it was not given.
  */
 
-/** Strip markdown fences and extract the first balanced JSON object. */
+/** Strip a single markdown code fence around a JSON payload. */
+function stripFence(text: string): string {
+  return text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+}
+
+/** Index of the brace that balances the one at `start`, strings respected. */
+function findBalancedEnd(text: string, start: number): number {
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (ch === '\\') escaped = true
+      else if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') {
+      inString = true
+    } else if (ch === '{') {
+      depth += 1
+    } else if (ch === '}') {
+      depth -= 1
+      if (depth === 0) return i
+    }
+  }
+  return -1
+}
+
+/**
+ * Try progressively safer interpretations: pure JSON, fenced JSON, then a
+ * balanced-brace scan that tolerates harmless surrounding text. Never
+ * rewrites malformed JSON — returns the parse error for diagnostics.
+ */
+function firstParseableJson(text: string): { parsed: unknown } | { error: string } {
+  const attempts = [text, stripFence(text)]
+  let lastError: string | null = null
+  for (const candidate of attempts) {
+    try {
+      return { parsed: JSON.parse(candidate) }
+    } catch (cause) {
+      lastError = String(cause)
+    }
+  }
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== '{') continue
+    const end = findBalancedEnd(text, i)
+    if (end === -1) continue
+    const candidate = text.slice(i, end + 1)
+    try {
+      return { parsed: JSON.parse(candidate) }
+    } catch (cause) {
+      lastError = String(cause)
+    }
+  }
+  return { error: lastError ?? 'No JSON object found in the response.' }
+}
+
+/**
+ * Extract the model's JSON object — pure JSON, ```json fences, or JSON
+ * embedded in harmless surrounding text. Malformed JSON is NEVER rewritten:
+ * it throws bad_model_output carrying the exact parser error (with
+ * position/line/column) so the underlying failure stays visible.
+ */
 export function extractJson(text: string): unknown {
-  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
-  const start = cleaned.indexOf('{')
-  const end = cleaned.lastIndexOf('}')
-  if (start === -1 || end === -1 || end <= start) {
-    throw new OracleApiError('bad_model_output', 'The model did not return a JSON object.')
+  const trimmed = String(text).trim()
+  if (trimmed.length === 0) {
+    throw new OracleApiError('bad_model_output', 'The model returned an empty response.')
   }
-  try {
-    return JSON.parse(cleaned.slice(start, end + 1))
-  } catch (cause) {
-    throw new OracleApiError('bad_model_output', 'The model returned malformed JSON.', String(cause))
-  }
+  const result = firstParseableJson(trimmed)
+  if ('parsed' in result) return result.parsed
+  throw new OracleApiError('bad_model_output', 'The model returned malformed JSON.', result.error)
 }
 
 /** Coerce an unknown value to a finite number within [min, max], else fallback. */
@@ -84,6 +144,16 @@ export function normalizeAnalysis(
   }
   const raw = parsed as Record<string, unknown>
 
+  // The one required interpretation field: the summary IS the analysis.
+  // Never invent one — a response without it is a model failure.
+  const summary = str(raw.summary)
+  if (summary === null) {
+    throw new OracleApiError(
+      'bad_model_output',
+      'The model response is missing the required "summary" field.',
+    )
+  }
+
   const setupRaw = (raw.setup ?? {}) as Record<string, unknown>
   const liquidityRaw = (raw.liquidity ?? {}) as Record<string, unknown>
   const displacementRaw = (raw.displacement ?? {}) as Record<string, unknown>
@@ -94,7 +164,7 @@ export function normalizeAnalysis(
 
   // Interpretation fields (model-filled, defensively coerced):
   const analysis: OracleAnalysis = {
-    summary: str(raw.summary) ?? 'Analysis unavailable for this window.',
+    summary,
     bias: pickBias(raw.bias),
     setup: {
       family: pickFamily(setupRaw.family),

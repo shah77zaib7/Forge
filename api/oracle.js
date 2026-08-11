@@ -315,18 +315,63 @@ function sanitizeRequest(body) {
 }
 
 // server/oracle/lib/normalize.ts
+function stripFence(text) {
+  return text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+}
+function findBalancedEnd(text, start) {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === "{") {
+      depth += 1;
+    } else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+function firstParseableJson(text) {
+  const attempts = [text, stripFence(text)];
+  let lastError = null;
+  for (const candidate of attempts) {
+    try {
+      return { parsed: JSON.parse(candidate) };
+    } catch (cause) {
+      lastError = String(cause);
+    }
+  }
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== "{") continue;
+    const end = findBalancedEnd(text, i);
+    if (end === -1) continue;
+    const candidate = text.slice(i, end + 1);
+    try {
+      return { parsed: JSON.parse(candidate) };
+    } catch (cause) {
+      lastError = String(cause);
+    }
+  }
+  return { error: lastError ?? "No JSON object found in the response." };
+}
 function extractJson(text) {
-  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) {
-    throw new OracleApiError("bad_model_output", "The model did not return a JSON object.");
+  const trimmed = String(text).trim();
+  if (trimmed.length === 0) {
+    throw new OracleApiError("bad_model_output", "The model returned an empty response.");
   }
-  try {
-    return JSON.parse(cleaned.slice(start, end + 1));
-  } catch (cause) {
-    throw new OracleApiError("bad_model_output", "The model returned malformed JSON.", String(cause));
-  }
+  const result = firstParseableJson(trimmed);
+  if ("parsed" in result) return result.parsed;
+  throw new OracleApiError("bad_model_output", "The model returned malformed JSON.", result.error);
 }
 function clampNumber(value, fallback, min = 0, max = 100) {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
@@ -366,6 +411,13 @@ function normalizeAnalysis(rawText, request, model, now = Date.now()) {
     throw new OracleApiError("bad_model_output", "The model returned an empty response.");
   }
   const raw = parsed;
+  const summary = str(raw.summary);
+  if (summary === null) {
+    throw new OracleApiError(
+      "bad_model_output",
+      'The model response is missing the required "summary" field.'
+    );
+  }
   const setupRaw = raw.setup ?? {};
   const liquidityRaw = raw.liquidity ?? {};
   const displacementRaw = raw.displacement ?? {};
@@ -373,7 +425,7 @@ function normalizeAnalysis(rawText, request, model, now = Date.now()) {
   const snapshot = request.liquiditySnapshot;
   const sweptZones = snapshot.zones.filter((zone) => zone.swept);
   const analysis = {
-    summary: str(raw.summary) ?? "Analysis unavailable for this window.",
+    summary,
     bias: pickBias(raw.bias),
     setup: {
       family: pickFamily(setupRaw.family),
@@ -764,7 +816,12 @@ async function callGemini(options, apiKey) {
     body: JSON.stringify({
       system_instruction: { parts: [{ text: options.system }] },
       contents: [{ role: "user", parts: [{ text: options.user }] }],
-      generationConfig: { maxOutputTokens: 2e3, temperature: 0.2 }
+      // responseMimeType 'application/json' is Gemini's NATIVE structured
+      // output — the model is constrained to emit pure JSON (no fences, no
+      // prose), which is what made earlier responses unparseable. Deliberately
+      // no strict responseJsonSchema: it could 400 on older GEMINI_MODEL
+      // overrides, and the prompt already defines the exact object shape.
+      generationConfig: { responseMimeType: "application/json", maxOutputTokens: 2e3, temperature: 0.2 }
     }),
     signal: mergeSignal(options.signal)
   });

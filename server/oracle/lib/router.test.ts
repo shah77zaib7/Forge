@@ -278,6 +278,96 @@ describe('routeAnalysis', () => {
 })
 
 /* ------------------------------------------------------------------ */
+/* Gemini structured output + parser robustness                         */
+/* ------------------------------------------------------------------ */
+
+describe('Gemini structured output', () => {
+  it('requests native JSON output (responseMimeType application/json)', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          candidates: [{ content: { parts: [{ text: MODEL_JSON }] } }],
+          usageMetadata: { promptTokenCount: 900, candidatesTokenCount: 250 },
+        }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { analysis, meta } = await routeAnalysis(requestFixture({ model: 'gemini' }), { GEMINI_API_KEY: 'gk' })
+
+    const called = fetchMock.mock.calls[0]
+    expect(String(called[0])).toContain('gemini-3.6-flash:generateContent')
+    const sent = JSON.parse(String((called[1] as RequestInit).body))
+    // The fix: the model is constrained to emit pure JSON, no fences/prose.
+    expect(sent.generationConfig.responseMimeType).toBe('application/json')
+    expect(sent.generationConfig.maxOutputTokens).toBe(2000)
+
+    expect(analysis.summary).toContain('Buy-side was swept')
+    expect(meta.provider).toBe('gemini')
+    expect(meta.promptTokens).toBe(900)
+  })
+
+  it('normalizes a valid Gemini JSON response end-to-end', () => {
+    const analysis = normalizeAnalysis(
+      MODEL_JSON,
+      requestFixture({ model: 'gemini' }),
+      { id: 'gemini', provider: 'gemini', label: 'Gemini' },
+      1234,
+    )
+    expect(analysis.summary).toContain('Buy-side was swept')
+    expect(analysis.bias).toBe('bearish')
+    expect(analysis.confidence).toBe(78)
+    expect(analysis.setup.family).toBe('liquidity_sweep')
+    expect(analysis.model.id).toBe('gemini')
+    expect(analysis.timestamp).toBe(1234)
+  })
+})
+
+describe('JSON parser robustness', () => {
+  it('parses pure JSON', () => {
+    expect(extractJson('{"summary":"x"}')).toEqual({ summary: 'x' })
+  })
+
+  it('parses JSON inside ```json fences', () => {
+    expect(extractJson('```json\n{"summary":"x"}\n```')).toEqual({ summary: 'x' })
+  })
+
+  it('parses JSON surrounded by harmless prose', () => {
+    expect(extractJson('Here is your analysis:\n{"summary":"x"}\nHope that helps!')).toEqual({ summary: 'x' })
+  })
+
+  it('rejects malformed JSON with the exact parser error preserved', () => {
+    const bad = '{"summary":"x", "bias": "bullish" TRAILING}' // broken after "bullish"
+    let thrown: unknown = null
+    try {
+      extractJson(bad)
+    } catch (cause) {
+      thrown = cause
+    }
+    expect(thrown).toBeInstanceOf(OracleApiError)
+    expect((thrown as OracleApiError).code).toBe('bad_model_output')
+    // The detail preserves the parser message (position info) for diagnosis.
+    expect(String((thrown as OracleApiError).detail)).toMatch(/position|Expected|Unexpected/i)
+  })
+
+  it('rejects a missing required summary instead of inventing one', () => {
+    let thrown: unknown = null
+    try {
+      normalizeAnalysis(JSON.stringify({ bias: 'bullish' }), requestFixture(), {
+        id: 'gemini',
+        provider: 'gemini',
+        label: 'Gemini',
+      })
+    } catch (cause) {
+      thrown = cause
+    }
+    expect(thrown).toBeInstanceOf(OracleApiError)
+    expect((thrown as OracleApiError).code).toBe('bad_model_output')
+    expect(String((thrown as OracleApiError).message)).toContain('summary')
+  })
+})
+
+/* ------------------------------------------------------------------ */
 /* Normalization                                                       */
 /* ------------------------------------------------------------------ */
 
