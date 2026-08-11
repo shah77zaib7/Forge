@@ -148,6 +148,22 @@ export interface OracleApiResponse {
   meta: OracleRequestMeta
 }
 
+/** The last analysis request — what the status strip renders. Key-free:
+ *  model/provider labels, status, latency and estimated cost only. */
+export interface LastRequestInfo {
+  modelLabel: string
+  provider: string
+  status: 'ok' | 'error'
+  /** Typed failure code (not_configured, rate_limit, network, …) or null. */
+  code: string | null
+  /** Server-measured latency on success; client-measured on error. */
+  latencyMs: number
+  estimatedCostUsd: number | null
+  promptTokens: number | null
+  completionTokens: number | null
+  at: number
+}
+
 export interface OracleApiErrorBody {
   ok: false
   error: { code: string; message: string; detail?: string }

@@ -17,11 +17,13 @@ import { buildOracleRequest } from '@/features/ai/build-request'
 import { callOracle, localAnalysis, OracleClientError } from '@/features/ai/client'
 import { modelInfo } from '@/features/ai/models'
 import { useAi } from '@/features/ai/store'
+import type { LastRequestInfo } from '@/features/ai/types'
 
 import { Conversation } from './components/conversation'
 import { HistorySheet } from './components/history-sheet'
 import { InputBar } from './components/input-bar'
 import { MarketContextSheet } from './components/market-context-sheet'
+import { RequestStatusStrip } from './components/request-status'
 import { OracleSidebar } from './components/sidebar'
 import { cardSummary, marketHealth, newId, nowLabel } from './data'
 import { useMarketIntelligence } from '@/features/markets/hooks/use-market-intelligence'
@@ -66,6 +68,9 @@ export function OraclePage() {
   const [contextOpen, setContextOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [saved, setSaved] = useState<SavedAnalysis[]>(() => loadSavedAnalyses())
+  // The last analysis request — model/provider/status/latency/cost for the
+  // key-free status strip. Never contains API keys.
+  const [lastRequest, setLastRequest] = useState<LastRequestInfo | null>(null)
   // The mobile composer is portaled to <body> so no routed-content ancestor
   // (the page-transition wrapper animates filter/transform, which act as a
   // containing block for position:fixed) can ever move it off the viewport.
@@ -223,6 +228,8 @@ export function OraclePage() {
         timeframeId: targetTimeframe.id,
         exchange,
       }
+      const info = modelInfo(selected)
+      const startedAt = performance.now()
 
       try {
         const result = isLocal ? localAnalysis(request) : await callOracle(request)
@@ -233,10 +240,21 @@ export function OraclePage() {
             kind: 'ai',
             analysis: result.analysis,
             meta: result.meta,
-            modelLabel: modelInfo(selected).label,
+            modelLabel: info.label,
           },
         }
         setMessages((ms) => [...ms, message])
+        setLastRequest({
+          modelLabel: info.label,
+          provider: result.meta.provider,
+          status: 'ok',
+          code: null,
+          latencyMs: result.meta.latencyMs,
+          estimatedCostUsd: result.meta.estimatedCostUsd,
+          promptTokens: result.meta.promptTokens,
+          completionTokens: result.meta.completionTokens,
+          at: Date.now(),
+        })
       } catch (cause) {
         const error =
           cause instanceof OracleClientError
@@ -250,10 +268,21 @@ export function OraclePage() {
             code: error.code,
             message: error.message,
             detail: error.detail,
-            modelLabel: modelInfo(selected).label,
+            modelLabel: info.label,
           },
         }
         setMessages((ms) => [...ms, message])
+        setLastRequest({
+          modelLabel: info.label,
+          provider: info.providerLabel,
+          status: 'error',
+          code: error.code,
+          latencyMs: Math.round(performance.now() - startedAt),
+          estimatedCostUsd: null,
+          promptTokens: null,
+          completionTokens: null,
+          at: Date.now(),
+        })
       } finally {
         setThinking(false)
         sendingRef.current = false
@@ -416,6 +445,7 @@ export function OraclePage() {
               ref={composerRef}
               className="sticky bottom-0 z-20 bg-gradient-to-t from-background via-background/90 to-transparent px-0 pb-[max(env(safe-area-inset-bottom,0px),1rem)] pt-6"
             >
+              <RequestStatusStrip info={lastRequest} />
               <InputBar
                 onSend={handleComposerSend}
                 disabled={thinking}
@@ -433,6 +463,7 @@ export function OraclePage() {
                 ref={composerRef}
                 className="fixed inset-x-0 bottom-0 z-20 bg-gradient-to-t from-background via-background/90 to-transparent px-4 pb-[max(env(safe-area-inset-bottom,0px),0.5rem)] pt-6 sm:px-6"
               >
+                <RequestStatusStrip info={lastRequest} />
                 <InputBar
                   onSend={handleComposerSend}
                   disabled={thinking}

@@ -6,7 +6,7 @@
   "description": "Forge — a premium crypto trading workspace.",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && tsc -p tsconfig.api.json --noEmit && vite build",
+    "build": "tsc --noEmit && tsc -p tsconfig.api.json --noEmit && vite build && node scripts/bundle-oracle.mjs",
     "preview": "vite preview",
     "test": "vitest run"
   },
