@@ -287,11 +287,61 @@ interface CacheEntry {
 
 const cache = new Map<string, CacheEntry>()
 
-/** Credits observed on the most recent response (audit/debug metadata). */
-export const twelveDataLastResponse = {
-  creditsUsed: null as number | null,
-  creditsLeft: null as number | null,
-  status: null as number | null,
+/* ------------------------------------------------------------------ */
+/* Diagnostics — a structured snapshot of the provider's recent state,  */
+/* so missing-key / request-failure / unsupported-symbol / rate-limit / */
+/* empty-response / success are distinguishable at a glance. The API    */
+/* key value is NEVER included.                                        */
+/* ------------------------------------------------------------------ */
+
+export interface TwelveDataDiagnostics {
+  /** Whether VITE_TWELVEDATA_API_KEY was found at startup (never the value). */
+  keyConfigured: boolean
+  budgetUsedToday: number
+  budgetExhausted: boolean
+  lastStatus: number | null
+  lastCreditsUsed: number | null
+  lastCreditsLeft: number | null
+  lastSymbol: string | null
+  lastWindow: string | null
+  /** Distinguishing label of the last outcome, e.g. 'success' | 'empty' | 'rate_limit'. */
+  lastOutcome: string | null
+  lastError: string | null
+  lastErrorAt: number | null
+  lastSuccessAt: number | null
+}
+
+const diagnostics: TwelveDataDiagnostics = {
+  keyConfigured: false,
+  budgetUsedToday: 0,
+  budgetExhausted: false,
+  lastStatus: null,
+  lastCreditsUsed: null,
+  lastCreditsLeft: null,
+  lastSymbol: null,
+  lastWindow: null,
+  lastOutcome: null,
+  lastError: null,
+  lastErrorAt: null,
+  lastSuccessAt: null,
+}
+
+/** Latest provider state — safe to expose to debug metadata and the UI. */
+export function twelveDataDiagnostics(): TwelveDataDiagnostics {
+  return { ...diagnostics, keyConfigured: apiKey !== null, budgetUsedToday: twelveDataCreditsUsedToday(), budgetExhausted: twelveDataBudgetExhausted() }
+}
+
+/** Test seam — reset diagnostics between tests. */
+export function resetTwelveDataDiagnosticsForTests(): void {
+  diagnostics.lastStatus = null
+  diagnostics.lastCreditsUsed = null
+  diagnostics.lastCreditsLeft = null
+  diagnostics.lastSymbol = null
+  diagnostics.lastWindow = null
+  diagnostics.lastOutcome = null
+  diagnostics.lastError = null
+  diagnostics.lastErrorAt = null
+  diagnostics.lastSuccessAt = null
 }
 
 /**
@@ -306,12 +356,20 @@ async function fetchTwelveDataSeries(
   signal?: AbortSignal,
 ): Promise<CandleSeries | null> {
   const key = apiKey
+  diagnostics.lastSymbol = symbol
+  diagnostics.lastWindow = plan.window
   if (!key) {
+    diagnostics.lastOutcome = 'missing_key'
+    diagnostics.lastError = 'VITE_TWELVEDATA_API_KEY not configured'
+    diagnostics.lastErrorAt = Date.now()
     throw new Error(
       'Twelve Data is not configured — set VITE_TWELVEDATA_API_KEY to enable Spot Gold / Spot Silver OHLC.',
     )
   }
   if (twelveDataBudgetExhausted()) {
+    diagnostics.lastOutcome = 'budget_exhausted'
+    diagnostics.lastError = 'Daily credit budget reached'
+    diagnostics.lastErrorAt = Date.now()
     throw new Error(
       `Twelve Data daily budget reached (${TWELVE_DATA_BUDGET_HARD_STOP}/${TWELVE_DATA_DAILY_BUDGET} credits). Analysis resumes after midnight UTC.`,
     )
@@ -329,12 +387,20 @@ async function fetchTwelveDataSeries(
       `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}` +
       `&interval=${plan.interval}&outputsize=${plan.outputsize}&timezone=UTC&apikey=${encodeURIComponent(key)}`
     const response = await fetch(url, { signal })
-    twelveDataLastResponse.status = response.status
-    twelveDataLastResponse.creditsUsed = numberHeader(response.headers.get('api-credits-used'))
-    twelveDataLastResponse.creditsLeft = numberHeader(response.headers.get('api-credits-left'))
+    diagnostics.lastStatus = response.status
+    diagnostics.lastCreditsUsed = numberHeader(response.headers.get('api-credits-used'))
+    diagnostics.lastCreditsLeft = numberHeader(response.headers.get('api-credits-left'))
     recordCreditsUsed(response.headers)
     if (!response.ok) {
-      if (response.status === 429) throw new RateLimitError(429, 'Twelve Data rate limit reached — retry in a moment (credits reset each minute)')
+      if (response.status === 429) {
+        diagnostics.lastOutcome = 'rate_limit'
+        diagnostics.lastError = 'HTTP 429 — credits exhausted for this minute'
+        diagnostics.lastErrorAt = Date.now()
+        throw new RateLimitError(429, 'Twelve Data rate limit reached — retry in a moment (credits reset each minute)')
+      }
+      diagnostics.lastOutcome = 'request_failure'
+      diagnostics.lastError = `HTTP ${response.status}`
+      diagnostics.lastErrorAt = Date.now()
       throw new Error(`Twelve Data request failed (${response.status})`)
     }
     const payload: unknown = await response.json()
@@ -342,12 +408,29 @@ async function fetchTwelveDataSeries(
     if (apiError) {
       // 429 comes back both as an HTTP status and as a JSON error body.
       if (apiError.code === 429) {
+        diagnostics.lastOutcome = 'rate_limit'
+        diagnostics.lastError = apiError.message
+        diagnostics.lastErrorAt = Date.now()
         throw new RateLimitError(429, 'Twelve Data rate limit reached — retry in a moment (credits reset each minute)')
       }
+      diagnostics.lastOutcome = 'unsupported_symbol'
+      diagnostics.lastError = apiError.message
+      diagnostics.lastErrorAt = Date.now()
       throw new Error(`Twelve Data: ${apiError.message}`)
     }
     const candles = parseTimeSeriesPayload(payload)
-    if (candles.length < MIN_CANDLES) return null
+    if (candles.length < MIN_CANDLES) {
+      diagnostics.lastOutcome = 'empty_response'
+      diagnostics.lastError = `no usable candles for ${symbol} on ${plan.window}`
+      diagnostics.lastErrorAt = Date.now()
+      throw new Error(
+        `Twelve Data returned no usable candles for ${symbol} on ${plan.window} (empty response) — no analysis is possible for this window.`,
+      )
+    }
+    diagnostics.lastOutcome = 'success'
+    diagnostics.lastError = null
+    diagnostics.lastErrorAt = null
+    diagnostics.lastSuccessAt = Date.now()
     return {
       candles,
       granularity: plan.granularity,

@@ -13,11 +13,15 @@ import {
   unavailableReason,
 } from './market-router'
 import {
+  clearTwelveDataCache,
   parseTimeSeriesError,
   parseTimeSeriesPayload,
   resetTwelveDataBudgetForTests,
+  resetTwelveDataDiagnosticsForTests,
   setTwelveDataKeyForTests,
+  twelveDataDiagnostics,
   twelveDataHistoryProvider,
+  TWELVE_DATA_WINDOW_PLANS,
 } from './twelvedata'
 
 /* ------------------------------------------------------------------ */
@@ -91,6 +95,8 @@ const makeValues = (count: number, base = 4000): Array<[string, number, number, 
 beforeEach(() => {
   setTwelveDataKeyForTests('test-key')
   resetTwelveDataBudgetForTests()
+  resetTwelveDataDiagnosticsForTests()
+  clearTwelveDataCache()
   vi.stubGlobal('fetch', vi.fn())
 })
 
@@ -302,6 +308,85 @@ describe('F — source and last-update metadata', () => {
 })
 
 /* ------------------------------------------------------------------ */
+/* Window mappings — 1m/5m/15m/1h/4h/1D/1W → Twelve Data intervals.    */
+/* ------------------------------------------------------------------ */
+
+describe('Twelve Data window mappings', () => {
+  it('maps every workspace window to the correct Twelve Data interval', () => {
+    const expected: Record<string, string> = {
+      '1M': '1min',
+      '5M': '5min',
+      '15M': '15min',
+      '1H': '1h',
+      '4H': '4h',
+      '1D': '1day',
+      '1W': '1week',
+    }
+    for (const [window, interval] of Object.entries(expected)) {
+      expect(TWELVE_DATA_WINDOW_PLANS[window as keyof typeof TWELVE_DATA_WINDOW_PLANS]?.interval).toBe(interval)
+    }
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* Diagnostics — the six states are distinguishable.                    */
+/* ------------------------------------------------------------------ */
+
+describe('Twelve Data diagnostics', () => {
+  it('reports missing_key without exposing the key value', () => {
+    setTwelveDataKeyForTests(null)
+    void twelveDataHistoryProvider
+      .fetchWindowCandles('XAU/USD', '1H', undefined)
+      .then(() => null, () => null)
+    const state = twelveDataDiagnostics()
+    expect(state.keyConfigured).toBe(false)
+    expect(state.lastOutcome).toBe('missing_key')
+    expect(state.lastSymbol).toBe('XAU/USD')
+    expect(JSON.stringify(state)).not.toContain('test-key')
+  })
+
+  it('reports unsupported_symbol with the API message verbatim', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      okResponse({ code: 400, message: 'interval 1min is not available for XAU/USD on your plan', status: 'error' }),
+    )
+    const failure = await twelveDataHistoryProvider
+      .fetchWindowCandles('XAU/USD', '1M', undefined)
+      .then(() => null, (cause: unknown) => cause)
+    expect(String(failure)).toContain('interval 1min is not available')
+    expect(twelveDataDiagnostics().lastOutcome).toBe('unsupported_symbol')
+  })
+
+  it('reports rate_limit on HTTP 429', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response('{}', { status: 429, headers: { 'api-credits-used': '8' } }))
+    await twelveDataHistoryProvider.fetchWindowCandles('XAU/USD', '1H', undefined).then(() => null, () => null)
+    expect(twelveDataDiagnostics().lastOutcome).toBe('rate_limit')
+  })
+
+  it('reports empty_response with a descriptive error instead of silent null', async () => {
+    vi.mocked(fetch).mockResolvedValue(okResponse({ status: 'ok', values: [] }))
+    const failure = await twelveDataHistoryProvider
+      .fetchWindowCandles('XAU/USD', '1H', undefined)
+      .then(() => null, (cause: unknown) => cause)
+    expect(String(failure)).toContain('no usable candles for XAU/USD on 1H')
+    expect(twelveDataDiagnostics().lastOutcome).toBe('empty_response')
+  })
+
+  it('reports success and records it in the snapshot', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      okResponse(tdValues(makeValues(40)), { 'api-credits-used': '1', 'api-credits-left': '7' }),
+    )
+    const series = await twelveDataHistoryProvider.fetchWindowCandles('XAU/USD', '1H', undefined)
+    expect(series?.provider).toBe('twelvedata')
+    expect(series?.symbol).toBe('XAU/USD')
+    const state = twelveDataDiagnostics()
+    expect(state.lastOutcome).toBe('success')
+    expect(state.lastStatus).toBe(200)
+    expect(state.lastCreditsLeft).toBe(7)
+    expect(state.lastSuccessAt).not.toBeNull()
+  })
+})
+
+/* ------------------------------------------------------------------ */
 /* G — Rate-limit errors never crash the workspace.                    */
 /* ------------------------------------------------------------------ */
 
@@ -331,6 +416,9 @@ describe('G — rate-limit resilience', () => {
     expect(series!.provider).toBe('twelvedata')
     expect(series!.symbol).toBe('XAU/USD')
     expect(series!.candles.length).toBe(40)
+    // Never a crypto exchange provider for Spot Gold.
+    expect(series!.provider).not.toBe('binance')
+    expect(series!.provider).not.toBe('coingecko')
   })
 })
 

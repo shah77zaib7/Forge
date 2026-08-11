@@ -12,13 +12,15 @@ import {
   unavailableReason,
   type Freshness,
 } from '../services/market-router'
+import { twelveDataDiagnostics } from '../services/twelvedata'
 
 /**
  * Workspace liquidity windows. Each window resolves through the asset-aware
  * market router to whichever provider can genuinely supply it (CoinGecko for
- * crypto 1H+, exchange klines for sub-30m and Gold via PAXG/USDT). Assets or
- * windows without a legitimate source surface an honest reason — never
- * fabricated candles.
+ * crypto 1H+, exchange klines for sub-30m, Twelve Data for Spot Gold/Silver
+ * via XAU/USD and XAG/USD). Assets or windows without a legitimate source
+ * surface an honest reason — never fabricated candles, never a proxy
+ * instrument.
  */
 export type IntelligenceWindowId = '1M' | '5M' | '15M' | '1H' | '4H' | '1D' | '1W'
 
@@ -116,6 +118,10 @@ export function useMarketIntelligence(
         diagnostics: result.diagnostics,
         sweeps: result.sweeps,
         zones: [...result.liquidity.buySide, ...result.liquidity.sellSide],
+        // Provider-level transparency — key presence (never the value),
+        // last outcome, credits, errors. Distinguishes missing-key from
+        // rate-limit / unsupported-symbol / empty-response / success.
+        providerDiagnostics: twelveDataDiagnostics(),
       }
     }
     return result
@@ -131,6 +137,19 @@ export function useMarketIntelligence(
           ? 'insufficient'
           : 'ready'
         : 'loading'
+
+  // Dev transparency even when no series exists — e.g. a missing Twelve Data
+  // key short-circuits the fetch, and the handle must still say so instead
+  // of silently showing nothing.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    ;(window as unknown as { __forgeLiquidity?: unknown }).__forgeLiquidity = {
+      asset: coin?.id,
+      timeframe: timeframeId,
+      status,
+      providerDiagnostics: twelveDataDiagnostics(),
+    }
+  }, [coin?.id, timeframeId, status])
 
   const message = error
     ? 'Historical data temporarily unavailable. Live prices are unaffected.'

@@ -13,6 +13,19 @@
  * Output is a markdown table you can paste into the Forge notes.
  */
 
+// Load VITE_TWELVEDATA_API_KEY from a project .env.local if present — Node
+// does not read dotfiles, but Vite does (at dev-server startup).
+try {
+  const envFile = new URL('../.env.local', import.meta.url)
+  const content = await readFile(envFile, 'utf8')
+  for (const line of content.split(/\r?\n/)) {
+    const match = line.match(/^\s*VITE_TWELVEDATA_API_KEY\s*=\s*(.+)\s*$/)
+    if (match) process.env.VITE_TWELVEDATA_API_KEY = match[1].trim().replace(/^['"]|['"]$/g, '')
+  }
+} catch {
+  /* no .env.local — fall through to the process environment */
+}
+
 const KEY =
   process.env.TWELVEDATA_API_KEY ||
   process.env.VITE_TWELVEDATA_API_KEY ||
@@ -25,6 +38,8 @@ const SYMBOLS =
 const INTERVALS = ['1min', '5min', '15min', '1h', '4h', '1day', '1week']
 const OUTPUTSIZE = 5
 const DELAY_MS = 1200 // stay well under the 8 credits/minute Basic budget
+
+import { readFile } from 'node:fs/promises'
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
