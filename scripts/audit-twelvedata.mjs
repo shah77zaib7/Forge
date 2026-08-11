@@ -8,7 +8,7 @@
  *
  * Usage:
  *   TWELVEDATA_API_KEY=your_key node scripts/audit-twelvedata.mjs
- *   VITE_TWELVEDATA_API_KEY=your_key node scripts/audit-twelvedata.mjs --symbols XAU/USD XAG/USD
+ *   VITE_TWELVEDATA_API_KEY=your_key node scripts/audit-twelvedata.mjs --symbols XAU/USD
  *
  * Output is a markdown table you can paste into the Forge notes.
  */
@@ -32,8 +32,7 @@ const KEY =
   process.argv.find((arg) => arg.startsWith('--key='))?.slice('--key='.length)
 
 const SYMBOLS_ARG = process.argv.indexOf('--symbols')
-const SYMBOLS =
-  SYMBOLS_ARG !== -1 ? process.argv.slice(SYMBOLS_ARG + 1) : ['XAU/USD', 'XAG/USD']
+const SYMBOLS = SYMBOLS_ARG !== -1 ? process.argv.slice(SYMBOLS_ARG + 1) : ['XAU/USD']
 
 const INTERVALS = ['1min', '5min', '15min', '1h', '4h', '1day', '1week']
 const OUTPUTSIZE = 5
@@ -99,21 +98,27 @@ console.log('')
 console.log(row(['Symbol', 'Interval', 'HTTP', 'Credits used/left', 'First candle (UTC)', 'Last candle (UTC)', 'Detail', 'ms']))
 console.log(row(['---', '---', '---', '---', '---', '---', '---', '---']))
 
+// Per-request credit weight = the INCREMENT in api-credits-used vs the
+// previous probe (the header reports the per-minute running counter). When
+// the counter resets (new minute), a fresh request counts as its weight.
 const measuredWeights = {}
+let previousUsed = null
 for (const symbol of SYMBOLS) {
   for (const interval of INTERVALS) {
     const result = await probe(symbol, interval)
     console.log(row([result.symbol, result.interval, String(result.status), result.credits, result.first, result.last, result.detail, String(result.ms)]))
     const used = Number(result.credits.split('/')[0])
     if (Number.isFinite(used) && used > 0) {
-      measuredWeights[interval] = measuredWeights[interval] === undefined ? used : Math.max(measuredWeights[interval], used)
+      const increment = previousUsed !== null && used >= previousUsed ? used - previousUsed : 1
+      measuredWeights[interval] = measuredWeights[interval] === undefined ? increment : Math.max(measuredWeights[interval], increment)
+      previousUsed = used
     }
     await sleep(DELAY_MS)
   }
 }
 
 console.log('')
-console.log('## Measured per-request credit weight (max api-credits-used per interval)')
+console.log('## Measured per-request credit weight (max observed increment of api-credits-used)')
 for (const interval of INTERVALS) {
   console.log(`- ${interval}: ${measuredWeights[interval] ?? 'not measurable (no successful response)'}`)
 }

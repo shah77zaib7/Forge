@@ -84,7 +84,7 @@ export interface TwelveDataUsageReport {
  * set across the seven workspace windows, refreshing once per candle close.
  */
 export function estimateTwelveDataUsage(input: TwelveDataUsageInput): TwelveDataUsageReport {
-  const symbols = input.symbols.length > 0 ? input.symbols : ['BTC', 'ETH', 'XAU/USD', 'XAG/USD']
+  const symbols = input.symbols.length > 0 ? input.symbols : ['BTC', 'ETH', 'XAU/USD']
   const minutesPerDay = 1440
 
   const perWindow = WINDOW_ORDER.map((window) => {

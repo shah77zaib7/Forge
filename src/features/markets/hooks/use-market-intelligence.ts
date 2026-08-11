@@ -17,10 +17,9 @@ import { twelveDataDiagnostics } from '../services/twelvedata'
 /**
  * Workspace liquidity windows. Each window resolves through the asset-aware
  * market router to whichever provider can genuinely supply it (CoinGecko for
- * crypto 1H+, exchange klines for sub-30m, Twelve Data for Spot Gold/Silver
- * via XAU/USD and XAG/USD). Assets or windows without a legitimate source
- * surface an honest reason — never fabricated candles, never a proxy
- * instrument.
+ * crypto 1H+, exchange klines for sub-30m, Twelve Data for Spot Gold via
+ * XAU/USD). Assets or windows without a legitimate source surface an honest
+ * reason — never fabricated candles, never a proxy instrument.
  */
 export type IntelligenceWindowId = '1M' | '5M' | '15M' | '1H' | '4H' | '1D' | '1W'
 

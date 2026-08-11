@@ -1,5 +1,5 @@
 /**
- * gold-api.com client — Forge's spot precious-metals feed (XAU, XAG).
+ * gold-api.com client — Forge's spot precious-metals feed (XAU).
  *
  * Keyless public endpoint with CORS enabled; no API key, nothing to
  * configure. It is price-only by design: change, market cap, volume and
@@ -41,7 +41,7 @@ function parsePrice(symbol: string, payload: unknown): MetalQuote | null {
 }
 
 /**
- * Fetch spot prices for the given metals (e.g. ["XAU", "XAG"]) — one
+ * Fetch spot prices for the given metals (e.g. ["XAU"]) — one
  * request per symbol, all-or-nothing so a partial response can never
  * masquerade as complete data.
  */

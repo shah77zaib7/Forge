@@ -2,9 +2,9 @@ export type CategoryId = 'l1' | 'defi' | 'ai' | 'memes' | 'stable'
 
 /**
  * Broad asset classes Forge supports. Crypto and tokenized commodities are
- * live today via CoinGecko; commodities (XAU/XAG) are registered but awaiting
- * a data source; forex, stocks and indices are reserved for future
- * integration. The class drives which data source and display rules apply.
+ * live today via CoinGecko; Spot Gold (XAU) is live via Twelve Data; forex,
+ * stocks and indices are reserved for future integration. The class drives
+ * which data source and display rules apply.
  */
 export type AssetClass =
   | 'crypto'
@@ -102,11 +102,10 @@ export interface CoinIdentity
    * such pair and keep their honest unavailable state.
    */
   exchangeSymbol?: string
-  /**
-   * The canonical Twelve Data instrument for this asset (e.g. "XAU/USD" for
-   * Spot Gold, "XAG/USD" for Spot Silver). Metals resolve exclusively
-   * through Twelve Data — never through a crypto token proxy. Absent when
-   * the asset has no Twelve Data symbol.
+  /**    * The canonical Twelve Data instrument for this asset (e.g. "XAU/USD" for
+    * Spot Gold). Metals resolve exclusively through Twelve Data — never
+    * through a crypto token proxy. Absent when the asset has no Twelve Data
+    * symbol.
    */
   twelveDataSymbol?: string
   /**

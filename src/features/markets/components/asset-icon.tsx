@@ -91,8 +91,8 @@ export function AssetIcon({ ticker, color, size = 'md', className, logoUrl }: As
   const showLogo = logo !== null && !failed
 
   // Fallback monogram: crypto uses the ticker initial ("B" for BTC); other
-  // asset classes use the name initial ("G" for Gold, "S" for Silver) so
-  // nearby tickers like XAU/XAG never read as identical marks.
+  // asset classes use the name initial ("G" for Gold) so the XAU/USD ticker
+  // never reads as an identical mark.
   const letter =
     resolved && resolved.assetClass !== 'crypto' ? resolved.name.slice(0, 1) : ticker.slice(0, 1)
 

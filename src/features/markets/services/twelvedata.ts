@@ -1,16 +1,15 @@
 /**
- * Twelve Data — real OHLC for Spot Gold (XAU/USD) and Spot Silver (XAG/USD),
- * integrated through the same HistoryProvider seam as CoinGecko and the
- * exchange klines providers. The Liquidity Model consumes the normalized
- * CandleSeries output exactly like every other source.
+ * Twelve Data — real OHLC for Spot Gold (XAU/USD), integrated through the
+ * same HistoryProvider seam as CoinGecko and the exchange klines providers.
+ * The Liquidity Model consumes the normalized CandleSeries output exactly
+ * like every other source.
  *
  * DATA INTEGRITY RULES:
  *   • XAU/USD → Spot Gold → Twelve Data symbol "XAU/USD"
- *   • XAG/USD → Spot Silver → Twelve Data symbol "XAG/USD"
  *   • PAXG/USDT (PAX Gold, Binance) is a SEPARATE instrument and NEVER enters
- *     this pipeline — the router resolves metals exclusively through Twelve
- *     Data when an API key is configured, and to an honest unavailable state
- *     when it is not. No proxy, no silent substitution.
+ *     this pipeline — the router resolves Spot Gold exclusively through
+ *     Twelve Data when an API key is configured, and to an honest unavailable
+ *     state when it is not. No proxy, no silent substitution.
  *
  * KEY / PLAN GATING:
  *   A key is required for every time_series request (401 without one — the
@@ -371,7 +370,7 @@ async function fetchTwelveDataSeries(
     diagnostics.lastError = 'VITE_TWELVEDATA_API_KEY not configured'
     diagnostics.lastErrorAt = Date.now()
     throw new Error(
-      redact('Twelve Data is not configured — set VITE_TWELVEDATA_API_KEY to enable Spot Gold / Spot Silver OHLC.'),
+      redact('Twelve Data is not configured — set VITE_TWELVEDATA_API_KEY to enable Spot Gold OHLC.'),
     )
   }
   if (twelveDataBudgetExhausted()) {
@@ -399,32 +398,40 @@ async function fetchTwelveDataSeries(
     diagnostics.lastCreditsUsed = numberHeader(response.headers.get('api-credits-used'))
     diagnostics.lastCreditsLeft = numberHeader(response.headers.get('api-credits-left'))
     recordCreditsUsed(response.headers)
+    // Read the body once and always look for the API's structured error —
+    // the most informative failures arrive either as a non-2xx status WITH a
+    // JSON body (e.g. 404 "This symbol is available starting with the Grow or
+    // Venture plan") or as HTTP 200 with a `status:"error"` body. Discarding
+    // that message would hide the real reason.
+    let payload: unknown = null
+    let apiError: TwelveDataApiError | null = null
+    try {
+      const body: unknown = await response.json()
+      payload = body
+      apiError = parseTimeSeriesError(body)
+    } catch {
+      /* non-JSON body — fall through to status-based handling */
+    }
+    if (response.status === 429) {
+      diagnostics.lastOutcome = 'rate_limit'
+      diagnostics.lastError = redact(apiError?.message ?? 'HTTP 429 — credits exhausted for this minute')
+      diagnostics.lastErrorAt = Date.now()
+      throw new RateLimitError(429, redact('Twelve Data rate limit reached — retry in a moment (credits reset each minute)'))
+    }
+    if (apiError) {
+      // Distinct plan-gating state: the symbol exists but the configured plan
+      // cannot serve it (e.g. a symbol gated behind Grow or Venture).
+      const planRestricted = response.status === 404 && /plan/i.test(apiError.message)
+      diagnostics.lastOutcome = planRestricted ? 'plan_restricted' : 'unsupported_symbol'
+      diagnostics.lastError = redact(apiError.message)
+      diagnostics.lastErrorAt = Date.now()
+      throw new Error(redact(`Twelve Data: ${apiError.message}`))
+    }
     if (!response.ok) {
-      if (response.status === 429) {
-        diagnostics.lastOutcome = 'rate_limit'
-        diagnostics.lastError = 'HTTP 429 — credits exhausted for this minute'
-        diagnostics.lastErrorAt = Date.now()
-        throw new RateLimitError(429, redact('Twelve Data rate limit reached — retry in a moment (credits reset each minute)'))
-      }
       diagnostics.lastOutcome = 'request_failure'
       diagnostics.lastError = `HTTP ${response.status}`
       diagnostics.lastErrorAt = Date.now()
       throw new Error(redact(`Twelve Data request failed (${response.status})`))
-    }
-    const payload: unknown = await response.json()
-    const apiError = parseTimeSeriesError(payload)
-    if (apiError) {
-      // 429 comes back both as an HTTP status and as a JSON error body.
-      if (apiError.code === 429) {
-        diagnostics.lastOutcome = 'rate_limit'
-        diagnostics.lastError = redact(apiError.message)
-        diagnostics.lastErrorAt = Date.now()
-        throw new RateLimitError(429, redact('Twelve Data rate limit reached — retry in a moment (credits reset each minute)'))
-      }
-      diagnostics.lastOutcome = 'unsupported_symbol'
-      diagnostics.lastError = redact(apiError.message)
-      diagnostics.lastErrorAt = Date.now()
-      throw new Error(redact(`Twelve Data: ${apiError.message}`))
     }
     const candles = parseTimeSeriesPayload(payload)
     if (candles.length < MIN_CANDLES) {
@@ -470,13 +477,13 @@ function numberHeader(value: string | null): number | null {
 }
 
 /**
- * Twelve Data history provider — real OHLC for Spot Gold (XAU/USD) and Spot
- * Silver (XAG/USD). Interval support on the free plan is intentionally NOT
- * assumed: the API's own response (success or typed error) is the source of
- * truth for what the configured key can actually serve. Sub-hour intraday
- * forex availability in particular must be verified per key/plan (the docs
- * restrict 1min/5min/15min/30min to US equities; the audit script confirms
- * the live behavior).
+ * Twelve Data history provider — real OHLC for Spot Gold (XAU/USD). Interval
+ * support on the free plan is intentionally NOT assumed: the API's own
+ * response (success or typed error) is the source of truth for what the
+ * configured key can actually serve. Sub-hour intraday forex availability in
+ * particular must be verified per key/plan (the docs restrict
+ * 1min/5min/15min/30min to US equities; the audit script confirms the live
+ * behavior).
  */
 export const twelveDataHistoryProvider: HistoryProvider = {
   id: 'twelvedata',

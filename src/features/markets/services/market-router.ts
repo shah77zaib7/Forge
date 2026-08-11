@@ -10,8 +10,8 @@
  * Routing rules (current providers):
  *   Crypto (CoinGecko-backed)  1H/4H/1D/1W → CoinGecko keyless OHLC
  *                              1M/5M/15M    → exchange klines (exchangeSymbol)
- *   Spot Gold / Spot Silver    ALL windows  → Twelve Data (XAU/USD, XAG/USD)
- *                                            when VITE_TWELVEDATA_API_KEY is
+ *   Spot Gold                  ALL windows  → Twelve Data (XAU/USD) when
+ *                                            VITE_TWELVEDATA_API_KEY is
  *                                            configured; otherwise an explicit
  *                                            not-configured unavailable state.
  *                                            PAXG/USDT (PAX Gold, a separate
@@ -42,7 +42,7 @@ export interface SeriesSource {
 /** Why a window can't be served — surfaced verbatim in the UI. */
 export function unavailableReason(coin: Coin, window: HistoryWindowId): string | null {
   const identity = ASSET_REGISTRY.find((asset) => asset.id === coin.id)
-  const isMetal = coin.id === 'gold' || coin.id === 'silver'
+  const isMetal = coin.id === 'gold'
 
   if (isMetal) {
     if (!identity?.twelveDataSymbol) {
@@ -81,10 +81,10 @@ export function resolveSeriesSource(coin: Coin, window: HistoryWindowId): Series
 
   const sub30 = window === '1M' || window === '5M' || window === '15M'
 
-  // Metals: Spot Gold / Spot Silver resolve EXCLUSIVELY through Twelve Data
-  // (XAU/USD / XAG/USD) when an API key is configured. PAXG/USDT and any
-  // tokenized proxy are separate instruments and never enter this pipeline.
-  if (coin.id === 'gold' || coin.id === 'silver') {
+  // Metals: Spot Gold resolves EXCLUSIVELY through Twelve Data (XAU/USD)
+  // when an API key is configured. PAXG/USDT and any tokenized proxy are
+  // separate instruments and never enter this pipeline.
+  if (coin.id === 'gold') {
     if (!twelveDataKey() || twelveDataBudgetExhausted()) return null
     const symbol = identity.twelveDataSymbol
     return symbol ? { provider: twelveDataHistoryProvider, symbol } : null
@@ -147,7 +147,7 @@ export function assetCapabilities(coin: Coin): AssetCapabilities {
     volume: anyOhlc && (coin.id === 'gold' || Boolean(identity?.exchangeSymbol)),
     timeframes,
     source:
-      coin.id === 'gold' || coin.id === 'silver'
+      coin.id === 'gold'
         ? twelveDataKey()
           ? `Twelve Data · ${identity?.twelveDataSymbol ?? coin.ticker}`
           : 'Twelve Data — not configured'

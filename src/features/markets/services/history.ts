@@ -6,9 +6,9 @@
  *
  *   CoinGecko keyless /ohlc  →  crypto 1H (30m), 4H (4h), 1D (aggregated), 1W (4d)
  *   Exchange klines          →  crypto 1M/5M/15M (Binance → Bybit fallback)
- *   Twelve Data              →  Spot Gold (XAU/USD) and Spot Silver (XAG/USD),
- *                               all windows, when VITE_TWELVEDATA_API_KEY is
- *                               configured (see services/twelvedata.ts).
+ *   Twelve Data              →  Spot Gold (XAU/USD), all windows, when
+ *                               VITE_TWELVEDATA_API_KEY is configured
+ *                               (see services/twelvedata.ts).
  *
  * Assets with no candle source for a window — metals without a configured
  * Twelve Data key, stablecoins sub-30m — stay honest-unavailable, never
@@ -441,8 +441,8 @@ export async function fetchExchangeKlines(
 /**
  * Exchange klines provider — real candles for any asset with a tradable
  * keyless pair: crypto + XAUT on 1M/5M/15M (and 1H+ when the router asks).
- * Spot Gold/Silver are NOT served here — they resolve through the Twelve
- * Data provider exclusively. Binance → Bybit fallback per fetch.
+ * Spot Gold is NOT served here — it resolves through the Twelve Data
+ * provider exclusively. Binance → Bybit fallback per fetch.
  */
 export const exchangeKlinesProvider: HistoryProvider = {
   id: 'exchange',

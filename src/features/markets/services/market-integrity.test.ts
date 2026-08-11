@@ -137,53 +137,6 @@ describe('A — XAU/USD identity', () => {
 })
 
 /* ------------------------------------------------------------------ */
-/* B — XAG/USD is identified as XAG/USD.                               */
-/* ------------------------------------------------------------------ */
-
-describe('B — XAG/USD identity', () => {
-  it('routes Spot Silver exclusively through Twelve Data with symbol XAG/USD', () => {
-    const silver = registryCoin('silver')
-    expect(ASSET_REGISTRY.find((asset) => asset.id === 'silver')?.twelveDataSymbol).toBe('XAG/USD')
-    for (const window of ['1M', '5M', '15M', '1H', '4H', '1D', '1W'] as const) {
-      const source = resolveSeriesSource(silver, window)
-      expect(source?.provider.id).toBe('twelvedata')
-      expect(source?.symbol).toBe('XAG/USD')
-    }
-  })
-
-  it('runs the full XAG/USD pipeline — fetch → normalize → Liquidity Model zones', async () => {
-    // A real Twelve Data-shaped XAG/USD 1h response (silver price scale,
-    // 5-decimal strings) through the actual provider + engine — proving
-    // Silver is handled identically to Gold end to end.
-    const values = Array.from({ length: 60 }, (_, index) => [
-      `2026-08-0${(index % 9) + 1} 1${index % 10}:00:00`,
-      63.5 + index * 0.05,
-      63.5 + index * 0.05 + 0.2,
-      63.5 + index * 0.05 - 0.2,
-      63.5 + index * 0.05 + 0.05,
-      1000 + index,
-    ] as [string, number, number, number, number, number])
-    vi.mocked(fetch).mockResolvedValue(
-      okResponse(tdValues(values), { 'api-credits-used': '1', 'api-credits-left': '7' }),
-    )
-    const series = await twelveDataHistoryProvider.fetchWindowCandles('XAG/USD', '1H', undefined)
-    expect(series).not.toBeNull()
-    expect(series!.provider).toBe('twelvedata')
-    expect(series!.symbol).toBe('XAG/USD')
-    expect(series!.granularity).toBe('1h')
-    expect(series!.candles.length).toBe(60)
-
-    const analysis = analyzeTimeframe(series!.candles, series!.candles[series!.candles.length - 1].close, '1H', '1h')
-    expect(analysis.candleCount).toBe(60)
-    expect(analysis.liquidity.buySide.length).toBeGreaterThan(0)
-    expect(analysis.liquidity.sellSide.length).toBeGreaterThan(0)
-    // Never a crypto proxy.
-    expect(series!.provider).not.toBe('binance')
-    expect(series!.provider).not.toBe('coingecko')
-  })
-})
-
-/* ------------------------------------------------------------------ */
 /* C — PAXG/USDT cannot enter the XAU/USD pipeline.                    */
 /* ------------------------------------------------------------------ */
 
@@ -193,15 +146,12 @@ describe('C — PAXG isolation', () => {
     expect(gold?.exchangeSymbol).toBeUndefined()
   })
 
-  it('never resolves Gold or Silver through the exchange provider', () => {
+  it('never resolves Gold through the exchange provider', () => {
     const gold = registryCoin('gold')
-    const silver = registryCoin('silver')
-    for (const coin of [gold, silver]) {
-      for (const window of ['1M', '5M', '15M', '1H', '4H', '1D', '1W'] as const) {
-        const source = resolveSeriesSource(coin, window)
-        expect(source?.provider.id).not.toBe('exchange')
-        expect(source?.symbol ?? '').not.toContain('PAXG')
-      }
+    for (const window of ['1M', '5M', '15M', '1H', '4H', '1D', '1W'] as const) {
+      const source = resolveSeriesSource(gold, window)
+      expect(source?.provider.id).not.toBe('exchange')
+      expect(source?.symbol ?? '').not.toContain('PAXG')
     }
   })
 
@@ -321,9 +271,6 @@ describe('E — Liquidity Model over real candles', () => {
 
 describe('F — source and last-update metadata', () => {
   it('surfaces the provider, instrument and honest data timestamp', () => {
-    const silver = registryCoin('silver')
-    expect(surfaceSource(silver, 'twelvedata', 'XAG/USD', '15m')).toBe('Twelve Data · 15m · XAG/USD')
-
     // Parsed series order ascending ⇒ last candle is the newest; lastCandleAt
     // must equal it (the hook feeds this to "Updated Xs ago").
     const values = makeValues(30, 29)
@@ -400,6 +347,25 @@ describe('Twelve Data diagnostics', () => {
       .then(() => null, (cause: unknown) => cause)
     expect(String(failure)).toContain('no usable candles for XAU/USD on 1H')
     expect(twelveDataDiagnostics().lastOutcome).toBe('empty_response')
+  })
+
+  it('surfaces the plan-restricted 404 with the API message verbatim', async () => {
+    // The real XAG/USD failure on a Basic key: HTTP 404 with a JSON body
+    // explaining the symbol is gated behind Grow/Venture. The message must
+    // reach the UI instead of a bare "request failed (404)".
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({ code: 404, message: 'This symbol is available starting with the Grow or Venture plan.', status: 'error' }),
+        { status: 404, headers: { 'content-type': 'application/json' } },
+      ),
+    )
+    const failure = await twelveDataHistoryProvider
+      .fetchWindowCandles('XAG/USD', '1H', undefined)
+      .then(() => null, (cause: unknown) => cause)
+    expect(String(failure)).toContain('available starting with the Grow or Venture plan')
+    expect(twelveDataDiagnostics().lastOutcome).toBe('plan_restricted')
+    expect(twelveDataDiagnostics().lastStatus).toBe(404)
+    expect(twelveDataDiagnostics().lastSymbol).toBe('XAG/USD')
   })
 
   it('redacts the key from any API error message that echoes it', async () => {
@@ -507,17 +473,17 @@ describe('H — cache honesty', () => {
 /* ------------------------------------------------------------------ */
 
 describe('credit model', () => {
-  it('estimates the four-instrument monitor load and verdicts honestly', () => {
-    const report = estimateTwelveDataUsage({ symbols: ['BTC', 'ETH', 'XAU/USD', 'XAG/USD'] })
-    // 4 symbols × 1440 min/day ÷ close minutes per window.
-    expect(report.perWindow.find((row) => row.window === '1M')?.requestsPerDay).toBe(5760)
-    expect(report.perWindow.find((row) => row.window === '1H')?.requestsPerDay).toBe(96)
-    expect(report.perWindow.find((row) => row.window === '1D')?.requestsPerDay).toBe(4)
+  it('estimates the three-instrument monitor load and verdicts honestly', () => {
+    const report = estimateTwelveDataUsage({ symbols: ['BTC', 'ETH', 'XAU/USD'] })
+    // 3 symbols × 1440 min/day ÷ close minutes per window.
+    expect(report.perWindow.find((row) => row.window === '1M')?.requestsPerDay).toBe(4320)
+    expect(report.perWindow.find((row) => row.window === '1H')?.requestsPerDay).toBe(72)
+    expect(report.perWindow.find((row) => row.window === '1D')?.requestsPerDay).toBe(3)
     // The always-on 1M+5M load exceeds the 800/day Basic cap → honest verdict.
     expect(report.withinDailyLimit).toBe(false)
     expect(report.verdict).toContain('exceeds the Basic daily cap')
     // 15M-and-above fits.
-    const calm = estimateTwelveDataUsage({ symbols: ['BTC', 'ETH', 'XAU/USD', 'XAG/USD'], weights: { '1M': 0, '5M': 0 } })
+    const calm = estimateTwelveDataUsage({ symbols: ['BTC', 'ETH', 'XAU/USD'], weights: { '1M': 0, '5M': 0 } })
     expect(calm.withinDailyLimit).toBe(true)
   })
 })

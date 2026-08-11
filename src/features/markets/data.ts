@@ -31,7 +31,7 @@ export const categoryLabels: Record<CategoryId, string> = {
 /* once for the whole app.                                            */
 /*                                                                    */
 /* dataSource: 'coingecko'  → crypto, fetched and shown live.         */
-/* dataSource: 'goldapi'    → spot metals (XAU/XAG), fetched live,    */
+/* dataSource: 'goldapi'    → spot metal (XAU), fetched live,        */
 /*   price only — change/cap/volume/supply stay null and render as    */
 /*   an honest dash.                                                  */
 /* dataSource: 'none'       → registered but no configured feed yet.  */
@@ -490,26 +490,5 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
     dataSource: 'goldapi',
     blurb:
       'Spot Gold (XAU/USD) — the classic safe-haven asset, quoted per troy ounce. OHLC via Twelve Data; live spot price via the metals feed.',
-  },
-  {
-    id: 'silver',
-    tvSymbol: 'OANDA:XAGUSD',
-    marketSymbol: 'xag',
-    // Canonical Twelve Data instrument — Spot Silver. Never substituted with
-    // a silver-backed token; OHLC comes from Twelve Data XAG/USD when the
-    // API key is configured, otherwise an explicit unavailable state.
-    twelveDataSymbol: 'XAG/USD',
-    logoUrl: '/logos/silver.jpg',
-    name: 'Spot Silver',
-    ticker: 'XAG/USD',
-    categories: [],
-    trending: false,
-    color: '#9BA1A6',
-    assetClass: 'commodity',
-    quoteCurrency: 'USD',
-    decimals: 2,
-    dataSource: 'goldapi',
-    blurb:
-      'Spot Silver (XAG/USD) — an industrial precious metal with deep safe-haven demand. OHLC via Twelve Data; live spot price via the metals feed.',
   },
 ]
