@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { estimateCostUsd } from './cost'
 import { OracleApiError } from './errors'
-import { availabilityReport, oracleModelById, resolveGateway } from './models'
+import { agentRouterBaseUrl, availabilityReport, oracleModelById, resolveGateway } from './models'
 import { extractJson, normalizeAnalysis } from './normalize'
 import { buildSystemPrompt, buildUserPrompt } from './prompt'
 import { routeAnalysis } from './router'
@@ -209,6 +209,42 @@ describe('routeAnalysis', () => {
     expect(meta.promptTokens).toBe(1200)
     expect(meta.completionTokens).toBe(300)
     expect(meta.estimatedCostUsd).toBeCloseTo(1200 / 1e6 * 15 + 300 / 1e6 * 75, 5)
+  })
+
+  it('surfaces a network failure as provider_error with the real cause — never the generic message', async () => {
+    // A dead gateway host: fetch rejects (DNS/connection) instead of returning HTTP.
+    vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('fetch failed'))))
+    const error = await routeAnalysis(requestFixture(), { AGENTROUTER_API_KEY: 'ar' }).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(OracleApiError)
+    expect((error as OracleApiError).code).toBe('provider_error')
+    expect((error as OracleApiError).message).toContain('AgentRouter')
+    // The underlying cause is preserved safely — this is what makes the
+    // dead-host diagnosis visible instead of "Oracle could not complete…".
+    expect((error as OracleApiError).detail).toContain('fetch failed')
+  })
+
+  it('maps an abort/timeout to the typed timeout code with a safe detail', async () => {
+    const abortError = new DOMException('The operation was aborted', 'AbortError')
+    vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(abortError)))
+    const error = await routeAnalysis(requestFixture(), { AGENTROUTER_API_KEY: 'ar' }).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(OracleApiError)
+    expect((error as OracleApiError).code).toBe('timeout')
+    expect((error as OracleApiError).detail).toContain('aborted')
+  })
+
+  it('defaults the AgentRouter base URL to the working gateway (agentrouter.org)', () => {
+    expect(agentRouterBaseUrl({})).toBe('https://agentrouter.org/v1')
+    // The dead api.agentrouter.dev host must never be the default.
+    expect(agentRouterBaseUrl({})).not.toContain('api.agentrouter.dev')
+    // A custom gateway still wins.
+    expect(agentRouterBaseUrl({ AGENTROUTER_BASE_URL: 'https://gw.example.com/v1' })).toBe('https://gw.example.com/v1')
+  })
+
+  it('uses a current stable Gemini model by default, with the env override intact', () => {
+    expect(oracleModelById('gemini', {})!.modelId).toBe('gemini-3.6-flash')
+    expect(oracleModelById('gemini', { GEMINI_MODEL: 'gemini-3.5-flash' })!.modelId).toBe('gemini-3.5-flash')
+    // The retired 2.5-pro id must never be the default.
+    expect(oracleModelById('gemini', {})!.modelId).not.toBe('gemini-2.5-pro')
   })
 
   it('maps provider 429 to rate_limit and 500 to provider_error', async () => {

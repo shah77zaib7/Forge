@@ -45,7 +45,7 @@ function modelIdOverride(provider, env = process.env) {
   return value ? value : null;
 }
 function agentRouterBaseUrl(env = process.env) {
-  return env.AGENTROUTER_BASE_URL?.trim() || "https://api.agentrouter.dev/v1";
+  return env.AGENTROUTER_BASE_URL?.trim() || "https://agentrouter.org/v1";
 }
 function agentRouterModel(env = process.env) {
   return env.AGENTROUTER_MODEL?.trim() || "claude-opus-5";
@@ -88,7 +88,11 @@ function oracleModels(env = process.env) {
       id: "gemini",
       provider: "gemini",
       label: "Gemini",
-      modelId: modelIdOverride("gemini", env) ?? "gemini-2.5-pro",
+      // gemini-2.5-pro is retired for new users (verified: HTTP 404 "no
+      // longer available to new users"). gemini-3.6-flash is a current
+      // STABLE model on the official Gemini API models page. GEMINI_MODEL
+      // still overrides (e.g. gemini-3.5-flash / gemini-3.1-pro-preview).
+      modelId: modelIdOverride("gemini", env) ?? "gemini-3.6-flash",
       via: ["gemini"],
       description: "Google \u2014 independent GEMINI_API_KEY"
     },
@@ -604,7 +608,7 @@ var RATES = {
   "claude-opus-4-8": { input: 15, output: 75 },
   // GPT-5.6 — estimate; GPT-5-class pricing.
   "gpt-5-6": { input: 2.5, output: 10 },
-  // Gemini 2.5 Pro class.
+  // Gemini 3 class (default gemini-3.6-flash) — estimate.
   gemini: { input: 1.25, output: 10 },
   // AgentRouter gateway model id is dynamic — apply the gateway default.
   agentrouter: { input: 2, output: 10 }
@@ -833,12 +837,22 @@ async function routeAnalysis(request, env = process.env, signal) {
     throw new OracleApiError("bad_request", "The local engine runs on the client \u2014 pick a server model.");
   }
   const call = directAdapterFor(gateway, env);
-  const result = await call({
-    modelId: entry.modelId,
-    system: buildSystemPrompt(),
-    user: buildUserPrompt(request),
-    signal
-  });
+  let result;
+  try {
+    result = await call({
+      modelId: entry.modelId,
+      system: buildSystemPrompt(),
+      user: buildUserPrompt(request),
+      signal
+    });
+  } catch (cause) {
+    if (cause instanceof OracleApiError) throw cause;
+    const label = providerLabel(gateway);
+    if (isAbortLike(cause)) {
+      throw new OracleApiError("timeout", `${label} timed out.`, safeErrorDetail(cause));
+    }
+    throw new OracleApiError("provider_error", `${label} request failed.`, safeErrorDetail(cause));
+  }
   const analysis = normalizeAnalysis(result.text, request, {
     id: entry.id,
     provider: gateway,
@@ -854,6 +868,17 @@ async function routeAnalysis(request, env = process.env, signal) {
     success: true
   };
   return { analysis, meta };
+}
+function isAbortLike(cause) {
+  if (cause instanceof Error) {
+    return cause.name === "AbortError" || cause.name === "TimeoutError" || /timed? ?out|aborted/i.test(cause.message);
+  }
+  return false;
+}
+function safeErrorDetail(cause) {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  const trimmed = message.trim().replace(/\s+/g, " ").slice(0, 300);
+  return trimmed.length > 0 ? trimmed : void 0;
 }
 
 // server/oracle/handler.ts

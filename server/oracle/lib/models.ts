@@ -46,9 +46,16 @@ export function modelIdOverride(provider: 'anthropic' | 'openai' | 'gemini', env
   return value ? value : null
 }
 
-/** AgentRouter gateway base URL (OpenAI-compatible chat completions). */
+/**
+ * AgentRouter gateway base URL (OpenAI-compatible chat completions).
+ *
+ * The canonical gateway is https://agentrouter.org/v1 — the api.agentrouter.dev
+ * host no longer resolves (verified: DNS failure), which made every
+ * AgentRouter request fail at the network layer. `AGENTROUTER_BASE_URL`
+ * remains the override for a self-hosted/custom gateway.
+ */
 export function agentRouterBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
-  return env.AGENTROUTER_BASE_URL?.trim() || 'https://api.agentrouter.dev/v1'
+  return env.AGENTROUTER_BASE_URL?.trim() || 'https://agentrouter.org/v1'
 }
 
 /** The model id AgentRouter serves for the standalone AgentRouter entry. */
@@ -98,7 +105,11 @@ export function oracleModels(env: NodeJS.ProcessEnv = process.env): OracleModelE
       id: 'gemini',
       provider: 'gemini',
       label: 'Gemini',
-      modelId: modelIdOverride('gemini', env) ?? 'gemini-2.5-pro',
+      // gemini-2.5-pro is retired for new users (verified: HTTP 404 "no
+      // longer available to new users"). gemini-3.6-flash is a current
+      // STABLE model on the official Gemini API models page. GEMINI_MODEL
+      // still overrides (e.g. gemini-3.5-flash / gemini-3.1-pro-preview).
+      modelId: modelIdOverride('gemini', env) ?? 'gemini-3.6-flash',
       via: ['gemini'],
       description: 'Google — independent GEMINI_API_KEY',
     },

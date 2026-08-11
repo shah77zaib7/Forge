@@ -1,5 +1,5 @@
 import { OracleApiError } from './errors'
-import { oracleModelById, PROVIDER_KEYS, resolveGateway, type OracleProviderId } from './models'
+import { oracleModelById, PROVIDER_KEYS, providerLabel, resolveGateway, type OracleProviderId } from './models'
 import { normalizeAnalysis } from './normalize'
 import { buildSystemPrompt, buildUserPrompt } from './prompt'
 import { estimateCostUsd } from './cost'
@@ -90,12 +90,26 @@ export async function routeAnalysis(
   }
 
   const call = directAdapterFor(gateway, env)
-  const result: ProviderCallResult = await call({
-    modelId: entry.modelId,
-    system: buildSystemPrompt(),
-    user: buildUserPrompt(request),
-    signal,
-  })
+  let result: ProviderCallResult
+  try {
+    result = await call({
+      modelId: entry.modelId,
+      system: buildSystemPrompt(),
+      user: buildUserPrompt(request),
+      signal,
+    })
+  } catch (cause) {
+    // Keep the real provider failure visible: typed errors pass through;
+    // anything else (network/DNS/TLS abort) becomes a typed provider_error
+    // or timeout carrying a SAFE detail (error name + message, truncated,
+    // never a key) — instead of the handler's generic service_unavailable.
+    if (cause instanceof OracleApiError) throw cause
+    const label = providerLabel(gateway)
+    if (isAbortLike(cause)) {
+      throw new OracleApiError('timeout', `${label} timed out.`, safeErrorDetail(cause))
+    }
+    throw new OracleApiError('provider_error', `${label} request failed.`, safeErrorDetail(cause))
+  }
 
   const analysis = normalizeAnalysis(result.text, request, {
     id: entry.id,
@@ -114,5 +128,20 @@ export async function routeAnalysis(
   }
 
   return { analysis, meta }
+}
+
+/** Timeout/abort signals from the AbortSignal chain (Node + browsers). */
+function isAbortLike(cause: unknown): boolean {
+  if (cause instanceof Error) {
+    return cause.name === 'AbortError' || cause.name === 'TimeoutError' || /timed? ?out|aborted/i.test(cause.message)
+  }
+  return false
+}
+
+/** A short, safe fragment of the underlying error — never a key. */
+function safeErrorDetail(cause: unknown): string | undefined {
+  const message = cause instanceof Error ? cause.message : String(cause)
+  const trimmed = message.trim().replace(/\s+/g, ' ').slice(0, 300)
+  return trimmed.length > 0 ? trimmed : undefined
 }
 
