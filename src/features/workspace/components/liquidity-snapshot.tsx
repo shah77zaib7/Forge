@@ -21,6 +21,7 @@ import type { Coin } from '@/features/markets/types'
 import { cn } from '@/lib/cn'
 
 import { liquidityTimeframes, type LiquidityTimeframeId } from '../data'
+import { surfaceSource } from '@/features/markets/services/market-router'
 import { LiveDataStatus } from './live-data-status'
 import { SectionHeading } from './section-heading'
 
@@ -222,7 +223,8 @@ export function LiquiditySnapshot({
   timeframeId: LiquidityTimeframeId
   onTimeframeChange: (id: LiquidityTimeframeId) => void
 }) {
-  const { status, analysis, message, fetchedAt, refresh } = useMarketIntelligence(coin, timeframeId)
+  const { status, analysis, message, provider, symbol, dataAt, freshness, refresh } =
+    useMarketIntelligence(coin, timeframeId)
   const items = analysis ? buildCards(analysis) : []
 
   return (
@@ -279,12 +281,9 @@ export function LiquiditySnapshot({
       )}
 
       <LiveDataStatus
-        source={
-          status === 'ready'
-            ? `${timeframeId === '1M' || timeframeId === '5M' || timeframeId === '15M' ? 'Exchange klines' : 'CoinGecko'} · ${analysis?.candleGranularity ?? ''}`
-            : 'OHLC history'
-        }
-        updatedAt={status === 'ready' ? fetchedAt : null}
+        source={surfaceSource(coin, provider, symbol, analysis?.candleGranularity ?? null)}
+        updatedAt={status === 'ready' ? dataAt : null}
+        freshness={status === 'ready' ? freshness : undefined}
         note={
           status === 'loading'
             ? 'Calculating…'

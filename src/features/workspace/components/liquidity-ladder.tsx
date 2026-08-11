@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 
 import { useMarketIntelligence } from '@/features/markets/hooks/use-market-intelligence'
 import { formatMarketPrice } from '@/features/markets/lib/format'
+import { surfaceSource } from '@/features/markets/services/market-router'
 import type { Coin } from '@/features/markets/types'
 import { cn } from '@/lib/cn'
 
@@ -26,7 +27,8 @@ function humanSource(source: string): string {
  * same model output and timeframe as the chart.
  */
 export function LiquidityLadder({ coin, timeframe }: { coin: Coin; timeframe: LiquidityTimeframe }) {
-  const { status, analysis, message, fetchedAt } = useMarketIntelligence(coin, timeframe.id)
+  const { status, analysis, message, provider, symbol, dataAt, freshness } =
+    useMarketIntelligence(coin, timeframe.id)
   const ready = status === 'ready' && analysis && !analysis.insufficient
 
   const ladder = useMemo(() => {
@@ -43,8 +45,6 @@ export function LiquidityLadder({ coin, timeframe }: { coin: Coin; timeframe: Li
     const pad = (max - min) * 0.08 || Math.max(max * 0.001, 1)
     return { zones, min: min - pad, max: max + pad, spot: analysis.currentPrice }
   }, [ready, analysis])
-
-  const sub30m = timeframe.id === '1M' || timeframe.id === '5M' || timeframe.id === '15M'
 
   return (
     <div className="border-t border-border px-4 py-3.5 sm:px-5">
@@ -144,12 +144,9 @@ export function LiquidityLadder({ coin, timeframe }: { coin: Coin; timeframe: Li
 
       <div className="mt-1">
         <LiveDataStatus
-          source={
-            ready && analysis
-              ? `${sub30m ? 'Exchange klines' : 'CoinGecko'} · ${analysis.candleGranularity}`
-              : 'OHLC history'
-          }
-          updatedAt={ready ? fetchedAt : null}
+          source={surfaceSource(coin, provider, symbol, analysis?.candleGranularity ?? null)}
+          updatedAt={ready ? dataAt : null}
+          freshness={ready ? freshness : undefined}
           note={status === 'loading' ? 'Calculating…' : status === 'insufficient' ? (message ?? 'No data') : 'Awaiting historical feed'}
         />
       </div>

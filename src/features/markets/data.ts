@@ -473,6 +473,10 @@ export const ASSET_REGISTRY: CoinIdentity[] = [
     id: 'gold',
     tvSymbol: 'OANDA:XAUUSD',
     marketSymbol: 'xau',
+    // PAX Gold (PAXG/USDT) — a 1:1 gold-backed token whose market tracks spot
+    // gold. The only legitimate keyless browser-viable gold OHLC source; the
+    // Liquidity Model labels it transparently rather than claiming spot.
+    exchangeSymbol: 'PAXGUSDT',
     logoUrl: '/logos/gold.jpg',
     name: 'Gold',
     ticker: 'XAU',

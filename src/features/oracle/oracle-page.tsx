@@ -20,6 +20,7 @@ import { MarketContextSheet } from './components/market-context-sheet'
 import { OracleSidebar } from './components/sidebar'
 import { cardSummary, marketHealth, newId, nowLabel, THINK_DURATION } from './data'
 import { useMarketIntelligence } from '@/features/markets/hooks/use-market-intelligence'
+import { surfaceSource } from '@/features/markets/services/market-router'
 import { buildMarketContext } from './services/market-context'
 import { loadSavedAnalyses, persistSavedAnalyses } from './services/history'
 import { oracleService } from './services/oracle-service'
@@ -137,10 +138,14 @@ export function OraclePage() {
             timeframe,
             intelligence.analysis,
             intelligence.candles,
-            intelligence.fetchedAt,
-            intelligence.status === 'ready' && intelligence.analysis
-              ? `${timeframe.id === '1M' || timeframe.id === '5M' || timeframe.id === '15M' ? 'Exchange klines' : 'CoinGecko'} · ${intelligence.analysis.candleGranularity}`
-              : 'OHLC history',
+            // Honest data timestamp (newest closed candle), not fetch time.
+            intelligence.dataAt,
+            surfaceSource(
+              activeCoin,
+              intelligence.provider,
+              intelligence.symbol,
+              intelligence.analysis?.candleGranularity ?? null,
+            ),
           )
         : null,
     [activeCoin, timeframe, intelligence],

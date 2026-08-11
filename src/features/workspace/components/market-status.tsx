@@ -5,6 +5,7 @@ import { GlassCard } from '@/components/ui/glass-card'
 import { ease } from '@/design/motion'
 import { useMarketIntelligence } from '@/features/markets/hooks/use-market-intelligence'
 import { formatCompact } from '@/lib/format'
+import { surfaceSource } from '@/features/markets/services/market-router'
 import { cn } from '@/lib/cn'
 
 import type { Coin } from '@/features/markets/types'
@@ -76,7 +77,8 @@ interface Cell {
  * render an honest dash instead of a fabricated read.
  */
 export function MarketStatus({ coin, timeframe }: { coin: Coin; timeframe: LiquidityTimeframe }) {
-  const { status, analysis, message, fetchedAt } = useMarketIntelligence(coin, timeframe.id)
+  const { status, analysis, message, provider, symbol, dataAt, freshness } =
+    useMarketIntelligence(coin, timeframe.id)
   const ready = status === 'ready' && analysis && !analysis.insufficient
 
   const structure = analysis?.structure
@@ -155,12 +157,9 @@ export function MarketStatus({ coin, timeframe }: { coin: Coin; timeframe: Liqui
         </motion.div>
 
         <LiveDataStatus
-          source={
-            ready
-              ? `${timeframe.id === '1M' || timeframe.id === '5M' || timeframe.id === '15M' ? 'Exchange klines' : 'CoinGecko'} · ${analysis?.candleGranularity ?? ''}`
-              : 'OHLC history'
-          }
-          updatedAt={ready ? fetchedAt : null}
+          source={surfaceSource(coin, provider, symbol, analysis?.candleGranularity ?? null)}
+          updatedAt={ready ? dataAt : null}
+          freshness={ready ? freshness : undefined}
           note={
             status === 'loading'
               ? 'Calculating…'

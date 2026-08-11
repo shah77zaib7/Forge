@@ -1,16 +1,17 @@
 /**
  * Real OHLC history for Forge's workspace windows, served by a provider
- * registry (HistoryProvider) so each window resolves to whatever source can
- * genuinely supply it:
+ * registry (HistoryProvider). Every provider returns the same normalized
+ * CandleSeries shape, so the Liquidity Model never knows which source the
+ * candles came from:
  *
- *   CoinGecko keyless /ohlc  →  1H (30m candles), 4H (4h), 1D (aggregated), 1W (4d)
- *   Exchange klines          →  1M / 5M / 15M (real sub-30m candles)
+ *   CoinGecko keyless /ohlc  →  crypto 1H (30m), 4H (4h), 1D (aggregated), 1W (4d)
+ *   Exchange klines          →  crypto 1M/5M/15M (Binance → Bybit fallback)
+ *                               Gold (XAU) ALL windows via PAXG/USDT (PAX Gold
+ *                               — 1:1 gold-backed; labeled transparently)
  *
- * CoinGecko's public API publishes no sub-30m OHLC, so the sub-30m windows
- * are served by the exchange klines provider (Binance → Bybit fallback), the
- * same deterministic engine consuming either source. Windows an asset has no
- * tradable pair for (stablecoins, metals) stay honest-unavailable — never
- * fabricated.
+ * Assets with no candle source for a window — Silver (no legitimate keyless
+ * browser-viable OHLC provider), stablecoins sub-30m — stay honest-unavailable,
+ * never fabricated.
  *
  * Every payload is validated before use: candles with non-finite values,
  * inverted high/low, or out-of-range open/close are dropped so a malformed
@@ -28,6 +29,29 @@ export interface Candle {
   high: number
   low: number
   close: number
+  /** Traded volume in quote units — present when the provider supplies it. */
+  volume?: number
+}
+
+/**
+ * A normalized candle series — every provider returns this same shape so the
+ * Forge Liquidity Model never knows (or cares) which exchange or vendor the
+ * candles came from. Source metadata travels with the series.
+ */
+export interface CandleSeries {
+  candles: Candle[]
+  /** Honest label for the candle size actually analyzed (e.g. '30m', '1m'). */
+  granularity: string
+  /** Provider that actually supplied the series (e.g. 'binance', 'coingecko'). */
+  provider: string
+  /** Provider-specific symbol fetched (e.g. 'BTCUSDT', 'PAXGUSDT'). */
+  symbol: string
+  /** Epoch ms the series was fetched. */
+  fetchedAt: number
+  /** Epoch ms of the newest closed candle — drives honest freshness. */
+  lastCandleAt: number
+  /** Estimated candle interval in ms (freshness + gap context). */
+  intervalMs: number
 }
 
 export interface HistoryWindowPlan {
@@ -77,7 +101,7 @@ export interface HistoryProvider {
     assetSymbol: string,
     window: HistoryWindowId,
     signal?: AbortSignal,
-  ): Promise<{ candles: Candle[]; granularity: string } | null>
+  ): Promise<CandleSeries | null>
 }
 
 const isFiniteNumber = (value: unknown): value is number =>
@@ -155,13 +179,13 @@ export function aggregateCandles(candles: Candle[], bucketMs: number): Candle[] 
 /* Cache — one in-flight promise + bounded TTL per fetch key.          */
 /* ------------------------------------------------------------------ */
 
-interface CacheEntry {
+interface CacheEntry<T> {
   fetchedAt: number
   /** In-flight fetch — dedupes concurrent requests for the same series. */
-  promise: Promise<Candle[]>
+  promise: Promise<T>
 }
 
-const cache = new Map<string, CacheEntry>()
+const cache = new Map<string, CacheEntry<Candle[]>>()
 
 function cacheKey(id: string, days: number): string {
   return `${id}:${days}`
@@ -208,6 +232,15 @@ export async function fetchOhlcSeries(
   }
 }
 
+/** Median spacing between consecutive candles — the series' true interval. */
+function medianIntervalMs(candles: Candle[]): number {
+  if (candles.length < 2) return 0
+  const gaps: number[] = []
+  for (let i = 1; i < candles.length; i++) gaps.push(candles[i].timestamp - candles[i - 1].timestamp)
+  gaps.sort((a, b) => a - b)
+  return gaps[Math.floor(gaps.length / 2)] || 0
+}
+
 /**
  * Fetch the candle series for a workspace window, honoring the plan's TTL
  * (re-fetch at most once per candle close per window). Returns null when
@@ -217,12 +250,20 @@ export async function fetchWindowCandles(
   coinGeckoId: string,
   plan: HistoryWindowPlan,
   signal?: AbortSignal,
-): Promise<{ candles: Candle[]; granularity: string } | null> {
+): Promise<CandleSeries | null> {
   const raw = await fetchOhlcSeries(coinGeckoId, plan.days, plan.ttlMs, signal)
   if (raw.length === 0) return null
   // The 1D window derives daily candles from the shared 4h series.
   const candles = plan.window === '1D' ? aggregateCandles(raw, 86_400_000) : raw
-  return { candles, granularity: plan.granularity }
+  return {
+    candles,
+    granularity: plan.granularity,
+    provider: 'coingecko',
+    symbol: coinGeckoId,
+    fetchedAt: Date.now(),
+    lastCandleAt: candles[candles.length - 1]?.timestamp ?? 0,
+    intervalMs: medianIntervalMs(candles),
+  }
 }
 
 /**
@@ -245,9 +286,11 @@ export const coingeckoHistoryProvider: HistoryProvider = {
 /* ------------------------------------------------------------------ */
 
 export interface ExchangeKlinePlan {
-  window: '1M' | '5M' | '15M'
-  /** Exchange interval token, e.g. '1m' | '5m' | '15m'. */
+  window: '1M' | '5M' | '15M' | '1H' | '4H' | '1D' | '1W'
+  /** Binance interval token, e.g. '1m' | '4h' | '1w'. */
   interval: string
+  /** Bybit interval token, e.g. '1' | '240' | 'W'. */
+  bybitInterval: string
   /** Honest label for the candles actually analyzed. */
   granularity: string
   /** Cache TTL — one candle close, roughly. */
@@ -257,37 +300,42 @@ export interface ExchangeKlinePlan {
 }
 
 export const EXCHANGE_WINDOW_PLANS: Record<string, ExchangeKlinePlan> = {
-  '1M': { window: '1M', interval: '1m', granularity: '1m', ttlMs: 45_000, limit: 500 },
-  '5M': { window: '5M', interval: '5m', granularity: '5m', ttlMs: 90_000, limit: 300 },
-  '15M': { window: '15M', interval: '15m', granularity: '15m', ttlMs: 240_000, limit: 300 },
+  '1M': { window: '1M', interval: '1m', bybitInterval: '1', granularity: '1m', ttlMs: 45_000, limit: 500 },
+  '5M': { window: '5M', interval: '5m', bybitInterval: '5', granularity: '5m', ttlMs: 90_000, limit: 300 },
+  '15M': { window: '15M', interval: '15m', bybitInterval: '15', granularity: '15m', ttlMs: 240_000, limit: 300 },
+  '1H': { window: '1H', interval: '1h', bybitInterval: '60', granularity: '1h', ttlMs: 10 * 60_000, limit: 300 },
+  '4H': { window: '4H', interval: '4h', bybitInterval: '240', granularity: '4h', ttlMs: 30 * 60_000, limit: 300 },
+  '1D': { window: '1D', interval: '1d', bybitInterval: 'D', granularity: '1d', ttlMs: 60 * 60_000, limit: 300 },
+  '1W': { window: '1W', interval: '1w', bybitInterval: 'W', granularity: '1w', ttlMs: 3 * 60 * 60_000, limit: 300 },
 }
 
 /**
  * One keyless public klines endpoint. Every row is normalized into
- * [openTimeMs, open, high, low, close] before validation — the exchange
- * provider never trusts raw payload shapes.
+ * [openTimeMs, open, high, low, close, volume?] before validation — the
+ * exchange provider never trusts raw payload shapes.
  */
 interface KlineEndpoint {
   id: string
-  url(symbol: string, interval: string, limit: number): string
-  /** Normalize a payload into raw [ts, o, h, l, c] rows; [] when unusable. */
-  rows(payload: unknown): Array<[number, number, number, number, number]>
+  url(symbol: string, plan: ExchangeKlinePlan, limit: number): string
+  /** Normalize a payload into raw [ts, o, h, l, c, vol?] rows; [] when unusable. */
+  rows(payload: unknown): Array<[number, number, number, number, number, number?]>
 }
 
 const toNum = (value: unknown): number => (typeof value === 'string' || typeof value === 'number' ? Number(value) : NaN)
 
-/** Coerce an untrusted row into a 5-tuple, or null when unusable. */
-function rawRow(row: unknown): [number, number, number, number, number] | null {
+/** Coerce an untrusted kline row into [ts, o, h, l, c, vol?], or null. */
+function rawRow(row: unknown): [number, number, number, number, number, number?] | null {
   if (!Array.isArray(row) || row.length < 5) return null
   const [timestamp, open, high, low, close] = row
-  return [toNum(timestamp), toNum(open), toNum(high), toNum(low), toNum(close)]
+  const volume = row[5]
+  return [toNum(timestamp), toNum(open), toNum(high), toNum(low), toNum(close), volume === undefined ? undefined : toNum(volume)]
 }
 
 const KLINE_ENDPOINTS: KlineEndpoint[] = [
   {
     id: 'binance',
-    url: (symbol, interval, limit) =>
-      `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`,
+    url: (symbol, plan) =>
+      `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${plan.interval}&limit=${plan.limit}`,
     rows(payload) {
       if (!Array.isArray(payload)) return []
       return payload.flatMap((row) => {
@@ -298,8 +346,8 @@ const KLINE_ENDPOINTS: KlineEndpoint[] = [
   },
   {
     id: 'bybit',
-    url: (symbol, interval, limit) =>
-      `https://api.bybit.com/v5/market/kline?category=spot&symbol=${symbol}&interval=${interval.replace('m', '')}&limit=${limit}`,
+    url: (symbol, plan) =>
+      `https://api.bybit.com/v5/market/kline?category=spot&symbol=${symbol}&interval=${plan.bybitInterval}&limit=${plan.limit}`,
     rows(payload) {
       const list = (payload as { result?: { list?: unknown[] } })?.result?.list
       if (!Array.isArray(list)) return []
@@ -313,13 +361,17 @@ const KLINE_ENDPOINTS: KlineEndpoint[] = [
   },
 ]
 
-/** Parse one raw kline row into a validated candle, or null. */
-function parseKline(raw: Array<[number, number, number, number, number]>[number]): Candle | null {
-  return parseCandle(raw)
+/** Parse one raw kline row into a validated candle (volume when present), or null. */
+function parseKline(raw: [number, number, number, number, number, number?]): Candle | null {
+  const [timestamp, open, high, low, close, volume] = raw
+  const candle = parseCandle([timestamp, open, high, low, close])
+  if (!candle) return null
+  if (volume !== undefined && Number.isFinite(volume) && volume > 0) candle.volume = volume
+  return candle
 }
 
 /** Normalize endpoint rows into sorted, validated, de-duplicated candles. */
-function normalizeKlines(rows: Array<[number, number, number, number, number]>): Candle[] {
+function normalizeKlines(rows: Array<[number, number, number, number, number, number?]>): Candle[] {
   const candles: Candle[] = []
   const seen = new Set<number>()
   for (const row of rows) {
@@ -332,7 +384,13 @@ function normalizeKlines(rows: Array<[number, number, number, number, number]>):
   return candles
 }
 
-const exchangeCache = new Map<string, CacheEntry>()
+interface ExchangeKlineResult {
+  candles: Candle[]
+  /** Which endpoint actually answered ('binance' | 'bybit'). */
+  source: string
+}
+
+const exchangeCache = new Map<string, CacheEntry<ExchangeKlineResult>>()
 
 /**
  * Fetch a real exchange kline series, trying each keyless endpoint in order
@@ -343,7 +401,7 @@ export async function fetchExchangeKlines(
   symbol: string,
   plan: ExchangeKlinePlan,
   signal?: AbortSignal,
-): Promise<Candle[]> {
+): Promise<ExchangeKlineResult> {
   const key = `${symbol}:${plan.window}`
   const entry = exchangeCache.get(key)
   if (entry && Date.now() - entry.fetchedAt < plan.ttlMs) return entry.promise
@@ -355,9 +413,9 @@ export async function fetchExchangeKlines(
     let lastError: unknown = null
     for (const endpoint of KLINE_ENDPOINTS) {
       try {
-        const payload = await fetchJson(endpoint.url(symbol, plan.interval, plan.limit), signal)
+        const payload = await fetchJson(endpoint.url(symbol, plan, plan.limit), signal)
         const candles = normalizeKlines(endpoint.rows(payload))
-        if (candles.length >= MIN_CANDLES) return candles
+        if (candles.length >= MIN_CANDLES) return { candles, source: endpoint.id }
         lastError = new Error(`${endpoint.id} returned too few candles for ${symbol}`)
       } catch (cause) {
         lastError = cause
@@ -368,9 +426,9 @@ export async function fetchExchangeKlines(
 
   exchangeCache.set(key, { fetchedAt: Date.now(), promise })
   try {
-    const candles = await promise
+    const result = await promise
     exchangeCache.set(key, { fetchedAt: Date.now(), promise })
-    return candles
+    return result
   } catch (cause) {
     exchangeCache.delete(key)
     throw cause
@@ -380,19 +438,30 @@ export async function fetchExchangeKlines(
 }
 
 /**
- * Exchange klines provider — real 1M/5M/15M candles for assets with a
- * tradable keyless pair (crypto + XAUT). Assets without a pair (stablecoins,
- * metals) are never queried; the hook reports them honest-unavailable.
+ * Exchange klines provider — real candles for any asset with a tradable
+ * keyless pair: crypto + XAUT on 1M/5M/15M, and Gold via the PAXG/USDT
+ * gold-token market across all windows (PAX Gold is 1:1 gold-backed; the
+ * source is labeled transparently). Binance → Bybit fallback per fetch.
  */
 export const exchangeKlinesProvider: HistoryProvider = {
   id: 'exchange',
   label: 'Exchange klines',
-  supportedWindows: ['1M', '5M', '15M'],
+  supportedWindows: ['1M', '5M', '15M', '1H', '4H', '1D', '1W'],
   fetchWindowCandles(assetSymbol, window, signal) {
     const plan = EXCHANGE_WINDOW_PLANS[window]
     if (!plan) return Promise.resolve(null)
-    return fetchExchangeKlines(assetSymbol, plan, signal).then((candles) =>
-      candles.length === 0 ? null : { candles, granularity: plan.granularity },
+    return fetchExchangeKlines(assetSymbol, plan, signal).then(({ candles, source }) =>
+      candles.length === 0
+        ? null
+        : {
+            candles,
+            granularity: plan.granularity,
+            provider: source,
+            symbol: assetSymbol,
+            fetchedAt: Date.now(),
+            lastCandleAt: candles[candles.length - 1]?.timestamp ?? 0,
+            intervalMs: medianIntervalMs(candles),
+          },
     )
   },
 }
