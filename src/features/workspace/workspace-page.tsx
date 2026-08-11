@@ -72,7 +72,7 @@ export function WorkspacePage() {
       <div className="mt-10 grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start xl:grid-cols-[minmax(0,1fr)_23rem]">
         {/* Left column — the market read */}
         <Reveal className="lg:col-start-1 lg:row-start-1">
-          <HeroChart coin={coin} />
+          <HeroChart coin={coin} timeframe={timeframe} />
         </Reveal>
         <Reveal className="lg:col-start-1 lg:row-start-2">
           <OracleSummary coin={coin} timeframe={timeframe} />

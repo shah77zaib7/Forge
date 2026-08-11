@@ -19,6 +19,7 @@ import { InputBar } from './components/input-bar'
 import { MarketContextSheet } from './components/market-context-sheet'
 import { OracleSidebar } from './components/sidebar'
 import { cardSummary, marketHealth, newId, nowLabel, THINK_DURATION } from './data'
+import { useMarketIntelligence } from '@/features/markets/hooks/use-market-intelligence'
 import { buildMarketContext } from './services/market-context'
 import { loadSavedAnalyses, persistSavedAnalyses } from './services/history'
 import { oracleService } from './services/oracle-service'
@@ -124,9 +125,25 @@ export function OraclePage() {
     () => (activeCoin ? marketHealth(activeCoin, timeframe) : null),
     [activeCoin, timeframe],
   )
+  // The exact market read Oracle works from — the same Forge Liquidity
+  // Model output as the workspace Snapshot (one detector, one source of
+  // truth). Cached per window, so this adds no network traffic.
+  const intelligence = useMarketIntelligence(activeCoin, timeframe.id)
   const snapshot = useMemo(
-    () => (activeCoin ? buildMarketContext(activeCoin, timeframe) : null),
-    [activeCoin, timeframe],
+    () =>
+      activeCoin
+        ? buildMarketContext(
+            activeCoin,
+            timeframe,
+            intelligence.analysis,
+            intelligence.candles,
+            intelligence.fetchedAt,
+            intelligence.status === 'ready' && intelligence.analysis
+              ? `${timeframe.id === '1M' || timeframe.id === '5M' || timeframe.id === '15M' ? 'Exchange klines' : 'CoinGecko'} · ${intelligence.analysis.candleGranularity}`
+              : 'OHLC history',
+          )
+        : null,
+    [activeCoin, timeframe, intelligence],
   )
   const hasStreaming = messages.some((message) => message.streaming)
 

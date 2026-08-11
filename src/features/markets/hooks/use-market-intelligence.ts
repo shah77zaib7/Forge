@@ -21,6 +21,8 @@ export type IntelligenceStatus = 'idle' | 'loading' | 'ready' | 'insufficient' |
 export interface IntelligenceState {
   status: IntelligenceStatus
   analysis: TimeframeAnalysis | null
+  /** The raw validated candle series behind the analysis (for window-return reads). */
+  candles: Candle[] | null
   /** Human reason for the insufficient/error state. */
   message: string | null
   /** Last epoch ms a fresh series was fetched (drives "Updated Xs ago"). */
@@ -38,7 +40,11 @@ export interface IntelligenceState {
 function providerSymbol(coin: Coin, provider: HistoryProvider): string | null {
   const identity = ASSET_REGISTRY.find((asset) => asset.id === coin.id)
   if (!identity) return null
-  return provider.id === 'exchange' ? identity.exchangeSymbol ?? null : identity.marketSymbol ?? identity.id
+  // CoinGecko history only exists for assets whose live feed is CoinGecko
+  // (metals come from the spot-metals provider, which has no OHLC at all);
+  // exchange klines need a tradable pair.
+  if (provider.id === 'exchange') return identity.exchangeSymbol ?? null
+  return identity.dataSource === 'coingecko' ? identity.marketSymbol ?? identity.id : null
 }
 
 /**
@@ -148,7 +154,7 @@ export function useMarketIntelligence(
     !provider
       ? 'This window is not published by the market-data provider — real analysis would require fabricated candles.'
       : noPair
-        ? `No ${timeframeId} feed for ${coin?.name ?? 'this asset'} — the market-data provider has no tradable pair for it.`
+        ? `No ${timeframeId} historical feed for ${coin?.name ?? 'this asset'} — the configured market-data providers have no candle history for it.`
         : error
           ? 'Historical data temporarily unavailable. Live prices are unaffected.'
           : analysis?.insufficient
@@ -158,6 +164,7 @@ export function useMarketIntelligence(
   return {
     status,
     analysis,
+    candles,
     message,
     fetchedAt,
     refresh: () => setNonce((n) => n + 1),

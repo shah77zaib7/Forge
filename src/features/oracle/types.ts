@@ -182,7 +182,9 @@ export interface OracleService {
 }
 
 /** The exact market read Oracle is working from — what the Market
- *  Context sheet displays. Same shape a live market-data adapter fills. */
+ *  Context sheet displays. Built from the Forge Liquidity Model (the same
+ *  deterministic engine that powers the Liquidity Snapshot), never from a
+ *  second detector. */
 export interface MarketContextSnapshot {
   coinId: string
   name: string
@@ -190,7 +192,7 @@ export interface MarketContextSnapshot {
   timeframeId: LiquidityTimeframeId
   price: string
   change24h: string
-  /** Expected return for the selected window, in percent. */
+  /** Expected return for the selected window, derived from real closes. */
   windowReturn: string
   trend: string
   trendTone: Tone
@@ -201,6 +203,27 @@ export interface MarketContextSnapshot {
   sellLiquidity: string
   support: string
   resistance: string
+  /** Every ranked zone the Liquidity Model detected for this window. */
+  zones: Array<{
+    side: 'buy' | 'sell'
+    price: number
+    zoneLow: number
+    zoneHigh: number
+    source: string
+    rank: string
+    strength: number
+    touches: number
+    swept: boolean
+    distancePercent: number
+  }>
+  /** Sweep events the model recorded for this window. */
+  sweeps: Array<{ side: 'buy' | 'sell'; direction: 'up' | 'down'; sweepPrice: number; returned: boolean }>
+  /** Honest label for the candle series analyzed (e.g. '30m', '1m'). */
+  granularity: string
+  /** Which provider supplied the candles. */
+  source: string
+  /** True when the model had no usable data for this window. */
+  unavailable: boolean
   updatedAt: number
 }
 
