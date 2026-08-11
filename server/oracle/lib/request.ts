@@ -1,27 +1,18 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node'
-
-import { OracleApiError, statusForCode } from './lib/errors'
-import { routeAnalysis } from './lib/router'
+import { OracleApiError } from './errors'
 import type {
-  OracleApiErrorBody,
   OracleApiRequest,
-  OracleApiResponse,
   SuppliedCandle,
   SuppliedLiquiditySnapshot,
   SuppliedSetupContext,
   SuppliedSweep,
   SuppliedZone,
-} from './lib/types'
+} from './types'
 
 /**
- * POST /api/oracle/analyze — the unified Oracle interface.
- *
- * The frontend sends ONE normalized analysis payload; the router decides
- * which provider/model processes it and returns the normalized analysis.
- * Provider keys live in server env vars only and never appear in any
- * response. Every failure returns a typed { ok:false, error } body with a
- * code the UI can render honestly (unknown_model, not_configured,
- * provider_error, rate_limit, timeout, bad_model_output, bad_request).
+ * Request validation/sanitization for the Oracle endpoint. This is an
+ * INTERNAL module — it lives outside `api/` on purpose so Vercel never
+ * treats it as a Serverless Function entry point (every file under `api/`
+ * would become its own function and blow the Hobby plan limit).
  */
 
 /** Server-side validation caps — the client sends far less. */
@@ -174,7 +165,7 @@ function setupField(value: unknown): SuppliedSetupContext | null {
 }
 
 /** Validate + sanitize the raw body into the typed request. Throws 400. */
-function sanitizeRequest(body: unknown): OracleApiRequest {
+export function sanitizeRequest(body: unknown): OracleApiRequest {
   if (typeof body !== 'object' || body === null) {
     throw new OracleApiError('bad_request', 'Request body must be a JSON object.')
   }
@@ -224,39 +215,5 @@ function sanitizeRequest(body: unknown): OracleApiRequest {
       responseDetail: strField(strategy.responseDetail, 80) ?? 'default',
     },
     requestedAnalysis,
-  }
-}
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') {
-    res.status(405).json({ ok: false, error: { code: 'method_not_allowed', message: 'Use POST.' } } satisfies OracleApiErrorBody)
-    return
-  }
-
-  let request: OracleApiRequest
-  try {
-    request = sanitizeRequest(req.body)
-  } catch (cause) {
-    if (cause instanceof OracleApiError) {
-      res.status(statusForCode(cause.code)).json({ ok: false, error: { code: cause.code, message: cause.message, detail: cause.detail } } satisfies OracleApiErrorBody)
-      return
-    }
-    res.status(400).json({ ok: false, error: { code: 'bad_request', message: 'Could not read the request body.' } } satisfies OracleApiErrorBody)
-    return
-  }
-
-  try {
-    // Bounded end-to-end: the router's providers merge their own timeout
-    // with the function's remaining budget signal.
-    const signal = AbortSignal.timeout(55_000)
-    const { analysis, meta } = await routeAnalysis(request, process.env, signal)
-    res.status(200).json({ ok: true, analysis, meta } satisfies OracleApiResponse)
-  } catch (cause) {
-    if (cause instanceof OracleApiError) {
-      res.status(statusForCode(cause.code)).json({ ok: false, error: { code: cause.code, message: cause.message, detail: cause.detail } } satisfies OracleApiErrorBody)
-      return
-    }
-    // Unknown server-side failure — honest 500, no details that could leak.
-    res.status(500).json({ ok: false, error: { code: 'service_unavailable', message: 'Oracle could not complete the analysis.' } } satisfies OracleApiErrorBody)
   }
 }

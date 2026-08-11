@@ -73,7 +73,7 @@ export interface SuppliedSetupContext {
   reasons: string[]
 }
 
-/** Everything the frontend sends to /api/oracle/analyze. */
+/** Everything the frontend sends to POST /api/oracle (action: 'analyze'). */
 export interface OracleApiRequest {
   /** Workspace model id, e.g. 'claude-opus-5' | 'gemini' | 'local'. */
   model: string

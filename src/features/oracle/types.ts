@@ -111,7 +111,7 @@ export interface MarketBriefCard {
  *  Provenance (sourceData, model, timestamp) is stamped server-side. */
 export interface AiAnalysisCard {
   kind: 'ai'
-  /** The normalized analysis from /api/oracle/analyze (or the Local engine). */
+  /** The normalized analysis from POST /api/oracle (or the Local engine). */
   analysis: OracleAnalysis
   /** Request metadata — provider, tokens, estimated cost. Never keys. */
   meta: OracleRequestMeta | null

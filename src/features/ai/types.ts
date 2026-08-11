@@ -79,7 +79,7 @@ export interface SuppliedSetupContext {
   reasons: string[]
 }
 
-/** Everything sent to POST /api/oracle/analyze. */
+/** Everything sent to POST /api/oracle (action: 'analyze'). */
 export interface OracleApiRequest {
   model: string
   symbol: string
@@ -153,7 +153,7 @@ export interface OracleApiErrorBody {
   error: { code: string; message: string; detail?: string }
 }
 
-/** The availability report from GET /api/oracle/models. */
+/** The availability report from GET /api/oracle (or POST action: 'models'). */
 export interface OracleModelAvailability {
   models: Array<{
     id: string

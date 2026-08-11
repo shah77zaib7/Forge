@@ -154,8 +154,9 @@ export function missingKeysFor(entry: OracleModelEntry): string[] {
 }
 
 /**
- * The public availability report — served by GET /api/oracle/models. Never
- * contains key values, only which key NAMES are configured.
+ * The public availability report — served by GET /api/oracle (and POST
+ * action: 'models'). Never contains key values, only which key NAMES are
+ * configured.
  */
 export interface OracleModelAvailability {
   models: Array<{

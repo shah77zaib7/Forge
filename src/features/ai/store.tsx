@@ -6,10 +6,10 @@ import type { AiModelId, OracleModelAvailability } from './types'
 /**
  * The Oracle model store — one source of truth for which model Oracle uses,
  * persisted to localStorage. Availability comes from the server's key-free
- * report (GET /api/oracle/models): the server knows which keys are
- * configured, the client never sees them. When the report is unreachable
- * (e.g. local dev with no API server) only the Local engine is available —
- * honest, never a fake enabled state.
+ * report (GET /api/oracle): the server knows which keys are configured,
+ * the client never sees them. When the report is unreachable (e.g. local
+ * dev with no API server) only the Local engine is available — honest,
+ * never a fake enabled state.
  */
 
 type FetchState = 'idle' | 'loading' | 'ready' | 'error'
@@ -48,7 +48,7 @@ export function AiProvider({ children }: { children: ReactNode }) {
 
   const refreshAvailability = useCallback(() => {
     setFetchState((state) => (state === 'idle' ? 'loading' : state))
-    void fetch('/api/oracle/models', { headers: { accept: 'application/json' } })
+    void fetch('/api/oracle', { headers: { accept: 'application/json' } })
       .then(async (response) => {
         if (!response.ok) throw new Error(`Availability report failed (${response.status})`)
         const data = (await response.json()) as OracleModelAvailability

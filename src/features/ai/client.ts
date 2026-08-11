@@ -1,7 +1,8 @@
 import type { OracleAnalysis, OracleApiRequest, OracleApiResponse, OracleRequestMeta } from './types'
 
 /**
- * The Oracle API client — the ONLY frontend path to /api/oracle/analyze.
+ * The Oracle API client — the ONLY frontend path to the single Oracle
+ * Serverless Function (POST /api/oracle with { action: 'analyze' }).
  * Typed failures surface honestly (network / rate_limit / not_configured /
  * provider_error / bad_model_output…). `localAnalysis` is the deterministic
  * Local engine fallback: it produces the SAME normalized analysis shape from
@@ -34,10 +35,10 @@ export async function callOracle(
   signal?.addEventListener('abort', onAbort, { once: true })
 
   try {
-    const response = await fetch('/api/oracle/analyze', {
+    const response = await fetch('/api/oracle', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(request),
+      body: JSON.stringify({ action: 'analyze', ...request }),
       signal: controller.signal,
     })
     const body = (await response.json().catch(() => null)) as
