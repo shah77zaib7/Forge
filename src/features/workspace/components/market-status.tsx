@@ -1,18 +1,17 @@
 import { motion } from 'framer-motion'
 import { Activity, ArrowDownRight, ArrowUpRight, MoveRight } from 'lucide-react'
-import { useMemo } from 'react'
 
 import { GlassCard } from '@/components/ui/glass-card'
 import { ease } from '@/design/motion'
-import type { Coin } from '@/features/markets/types'
+import { useMarketIntelligence } from '@/features/markets/hooks/use-market-intelligence'
+import { formatCompact } from '@/lib/format'
 import { cn } from '@/lib/cn'
 
-import {
-  marketStatus,
-  type LiquidityTimeframe,
-  type MarketStatusData,
-  type Tone,
-} from '../data'
+import type { Coin } from '@/features/markets/types'
+import type { LiquidityTimeframe } from '../data'
+import { LiveDataStatus } from './live-data-status'
+
+type Tone = 'positive' | 'negative' | 'neutral'
 
 const toneClass: Record<Tone, string> = {
   positive: 'border-positive/25 bg-positive/10 text-positive',
@@ -29,7 +28,7 @@ function StatusCell({
   label: string
   value: string
   tone?: Tone
-  direction?: MarketStatusData['trend']['direction']
+  direction?: 'up' | 'down' | 'flat'
 }) {
   return (
     <motion.div
@@ -62,31 +61,62 @@ function StatusCell({
   )
 }
 
+interface Cell {
+  label: string
+  value: string
+  tone?: Tone
+  direction?: 'up' | 'down' | 'flat'
+}
+
 /**
  * Market Status — the first thing a trader reads. A compact pulse of the
- * window: trend, momentum, volume, structure and bias. Driven by the
- * same shared timeframe as Oracle and Depth, so the whole workspace
- * speaks with one voice.
+ * window: trend, momentum, structure and bias come from the Market
+ * Intelligence Engine over real CoinGecko OHLC candles; volume is the real
+ * 24h traded volume from the live quote. Windows the provider can't feed
+ * render an honest dash instead of a fabricated read.
  */
 export function MarketStatus({ coin, timeframe }: { coin: Coin; timeframe: LiquidityTimeframe }) {
-  const status = useMemo(() => marketStatus(coin, timeframe), [coin, timeframe])
+  const { status, analysis, message, fetchedAt } = useMarketIntelligence(coin, timeframe.id)
+  const ready = status === 'ready' && analysis && !analysis.insufficient
 
-  const cells: Array<{
-    label: string
-    value: string
-    tone?: Tone
-    direction?: MarketStatusData['trend']['direction']
-  }> = [
+  const structure = analysis?.structure
+  const momentum = analysis?.momentum
+  const resistance = analysis?.resistance[0]
+  const support = analysis?.support[0]
+
+  const bias =
+    !structure
+      ? '—'
+      : structure.trend === 'sideways'
+        ? 'Range'
+        : structure.trend === 'bullish'
+          ? resistance && resistance.distancePercent < 0.5
+            ? 'Breakout'
+            : 'Continuation'
+          : support && support.distancePercent < 0.5
+            ? 'Reversal'
+            : 'Continuation'
+
+  const cells: Cell[] = [
     {
       label: 'Trend',
-      value: status.trend.label,
-      tone: status.trend.tone,
-      direction: status.trend.direction,
+      value: !ready ? '—' : structure!.trend === 'bullish' ? 'Bullish' : structure!.trend === 'bearish' ? 'Bearish' : 'Sideways',
+      tone: !ready ? 'neutral' : structure!.trend === 'bullish' ? 'positive' : structure!.trend === 'bearish' ? 'negative' : 'neutral',
+      direction: !ready
+        ? undefined
+        : structure!.trend === 'bullish'
+          ? 'up'
+          : structure!.trend === 'bearish'
+            ? 'down'
+            : 'flat',
     },
-    { label: 'Momentum', value: status.momentum },
-    { label: 'Volume', value: status.volume },
-    { label: 'Market Structure', value: status.structure },
-    { label: 'Bias', value: status.bias },
+    {
+      label: 'Momentum',
+      value: !ready || !momentum ? '—' : `${momentum.state[0].toUpperCase()}${momentum.state.slice(1)} ${momentum.direction === 'up' ? '↑' : momentum.direction === 'down' ? '↓' : '→'}`,
+    },
+    { label: 'Volume 24h', value: coin.volume24h === null ? '—' : `$${formatCompact(coin.volume24h)}` },
+    { label: 'Market Structure', value: !ready || !structure ? '—' : structure.label },
+    { label: 'Bias', value: bias },
   ]
 
   return (
@@ -95,9 +125,7 @@ export function MarketStatus({ coin, timeframe }: { coin: Coin; timeframe: Liqui
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Activity size={14} strokeWidth={1.75} className="text-faint" />
-            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-faint">
-              Market status
-            </span>
+            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-faint">Market status</span>
           </div>
           <span className="rounded-full border border-border bg-tint/[0.04] px-2.5 py-1 font-mono text-[11px] tabular-nums text-muted">
             {timeframe.id} window
@@ -125,6 +153,12 @@ export function MarketStatus({ coin, timeframe }: { coin: Coin; timeframe: Liqui
             />
           ))}
         </motion.div>
+
+        <LiveDataStatus
+          source="CoinGecko · OHLC"
+          updatedAt={ready ? fetchedAt : null}
+          note={status === 'error' || message ? 'Awaiting historical feed' : 'Calculating…'}
+        />
       </div>
     </GlassCard>
   )

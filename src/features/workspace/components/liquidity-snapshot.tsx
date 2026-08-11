@@ -1,31 +1,122 @@
 import { motion } from 'framer-motion'
-import { ArrowDownToLine, ArrowUpFromLine, Flame, MoveHorizontal, Shield, TrendingDown, TrendingUp } from 'lucide-react'
+import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Flame,
+  MoveHorizontal,
+  Shield,
+  TrendingDown,
+  TrendingUp,
+  WifiOff,
+} from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
 
 import { GlassCard } from '@/components/ui/glass-card'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { ease } from '@/design/motion'
+import { useMarketIntelligence } from '@/features/markets/hooks/use-market-intelligence'
+import { formatMarketPrice } from '@/features/markets/lib/format'
+import type { LevelCandidate, LiquidityCandidate } from '@/features/markets/services/market-intelligence'
 import type { Coin } from '@/features/markets/types'
 import { cn } from '@/lib/cn'
 
-import {
-  DEFAULT_LIQUIDITY_TIMEFRAME,
-  liquiditySnapshot,
-  liquidityTimeframes,
-  type LiquidityItem,
-  type LiquidityTimeframeId,
-} from '../data'
+import { liquidityTimeframes, type LiquidityTimeframeId } from '../data'
+import { LiveDataStatus } from './live-data-status'
 import { SectionHeading } from './section-heading'
 
-const icons: Record<Exclude<LiquidityItem['icon'], 'trend'>, LucideIcon> = {
+const icons: Record<'buy' | 'sell' | 'support' | 'resistance', LucideIcon> = {
   buy: ArrowDownToLine,
   sell: ArrowUpFromLine,
   support: Shield,
   resistance: Flame,
 }
 
-function LiquidityCard({ item }: { item: LiquidityItem }) {
+/** 'swing_high' → 'Swing high', 'previous_4h_high' → 'Previous 4h high' … */
+function humanSource(source: string): string {
+  return source
+    .split('_')
+    .map((part) => (part.length > 0 ? part[0].toUpperCase() + part.slice(1) : part))
+    .join(' ')
+}
+
+interface CardData {
+  label: string
+  icon: 'buy' | 'sell' | 'support' | 'resistance' | 'trend'
+  value: string
+  caption: string
+  tone: 'positive' | 'negative' | 'neutral'
+  details?: Array<{ label: string; value: string }>
+}
+
+function levelDetails(level: LevelCandidate | LiquidityCandidate): Array<{ label: string; value: string }> {
+  const details = [
+    { label: 'Source', value: humanSource(level.source) },
+    { label: 'Strength', value: `${Math.round(level.strength * 100)}%` },
+  ]
+  if ('touches' in level && level.touches > 1) details.push({ label: 'Tests', value: `${level.touches}` })
+  if ('swept' in level && level.swept) details.push({ label: 'State', value: 'Swept' })
+  return details
+}
+
+function buildCards(analysis: NonNullable<ReturnType<typeof useMarketIntelligence>['analysis']>): CardData[] {
+  const { liquidity, support, resistance, structure, momentum } = analysis
+  const buy = liquidity.buySide[0]
+  const sell = liquidity.sellSide[0]
+  const sup = support[0]
+  const res = resistance[0]
+
+  const trendTone: CardData['tone'] =
+    structure?.trend === 'bullish' ? 'positive' : structure?.trend === 'bearish' ? 'negative' : 'neutral'
+  const momentumCaption = momentum
+    ? `Momentum ${momentum.state} · ${momentum.direction}`
+    : structure
+      ? structure.label
+      : 'Insufficient data'
+
+  return [
+    {
+      label: 'Nearest Buy Liquidity',
+      icon: 'buy',
+      value: buy ? formatMarketPrice(buy.price) : '—',
+      caption: buy ? `${buy.distancePercent.toFixed(2)}% above spot` : 'No significant buy-side pool',
+      tone: 'neutral',
+      details: buy ? levelDetails(buy) : undefined,
+    },
+    {
+      label: 'Nearest Sell Liquidity',
+      icon: 'sell',
+      value: sell ? formatMarketPrice(sell.price) : '—',
+      caption: sell ? `${sell.distancePercent.toFixed(2)}% below spot` : 'No significant sell-side pool',
+      tone: 'neutral',
+      details: sell ? levelDetails(sell) : undefined,
+    },
+    {
+      label: 'Strong Support',
+      icon: 'support',
+      value: sup ? formatMarketPrice(sup.price) : '—',
+      caption: sup ? `${sup.distancePercent.toFixed(2)}% below spot` : 'No significant support',
+      tone: 'neutral',
+      details: sup ? levelDetails(sup) : undefined,
+    },
+    {
+      label: 'Strong Resistance',
+      icon: 'resistance',
+      value: res ? formatMarketPrice(res.price) : '—',
+      caption: res ? `${res.distancePercent.toFixed(2)}% above spot` : 'No significant resistance',
+      tone: 'neutral',
+      details: res ? levelDetails(res) : undefined,
+    },
+    {
+      label: 'Trend',
+      icon: 'trend',
+      value: structure?.trend === 'bullish' ? 'Uptrend' : structure?.trend === 'bearish' ? 'Downtrend' : 'Sideways',
+      caption: structure ? momentumCaption : 'Insufficient data',
+      tone: trendTone,
+    },
+  ]
+}
+
+function LiquidityCard({ item }: { item: CardData }) {
   const Icon =
     item.icon === 'trend'
       ? item.tone === 'negative'
@@ -55,14 +146,9 @@ function LiquidityCard({ item }: { item: LiquidityItem }) {
           {item.value}
         </p>
         {item.details?.map((detail) => (
-          <div
-            key={detail.label}
-            className="mt-1 flex items-baseline justify-between gap-2"
-          >
+          <div key={detail.label} className="mt-1 flex items-baseline justify-between gap-2">
             <span className="text-[11px] text-faint">{detail.label}</span>
-            <span className="font-mono text-[11px] tabular-nums text-foreground/80">
-              {detail.value}
-            </span>
+            <span className="font-mono text-[11px] tabular-nums text-foreground/80">{detail.value}</span>
           </div>
         ))}
         <p className="mt-0.5 text-[11px] text-faint">{item.caption}</p>
@@ -71,41 +157,55 @@ function LiquidityCard({ item }: { item: LiquidityItem }) {
   )
 }
 
-/** Quiet live-feed row — becomes real once order-book APIs land. */
-function DataStatus() {
-  const [seconds, setSeconds] = useState(12)
-  useEffect(() => {
-    const id = window.setInterval(() => setSeconds((s) => s + 30), 30000)
-    return () => window.clearInterval(id)
-  }, [])
-
-  const ago =
-    seconds < 60
-      ? `${seconds}s ago`
-      : seconds < 3600
-        ? `${Math.floor(seconds / 60)}m ago`
-        : `${Math.floor(seconds / 3600)}h ago`
-
+function LiquiditySkeleton() {
   return (
-    <div className="mt-3 flex items-center gap-2 text-[11px] text-faint">
-      <span aria-hidden className="relative flex size-1.5">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-positive opacity-60" />
-        <span className="relative inline-flex size-1.5 rounded-full bg-positive" />
-      </span>
-      <span>
-        Source — <span className="text-muted">Hyblock</span>
-      </span>
-      <span aria-hidden className="text-tint/40">
-        ·
-      </span>
-      <span>
-        Updated <span className="text-muted">{ago}</span>
-      </span>
+    <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-2" aria-hidden>
+      {Array.from({ length: 5 }, (_, index) => (
+        <div
+          key={index}
+          className="flex min-h-28 animate-pulse flex-col justify-between gap-3 rounded-hero border border-border bg-tint/[0.03] p-4"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="size-8 rounded-lg bg-tint/[0.07]" />
+            <div className="h-2.5 w-24 rounded-full bg-tint/[0.07]" />
+          </div>
+          <div>
+            <div className="h-4 w-20 rounded-full bg-tint/[0.07]" />
+            <div className="mt-2 h-2 w-16 rounded-full bg-tint/[0.06]" />
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
 
-/** Forge's signature depth view — where liquidity actually sits, per window. */
+/** Honest state when the provider can't supply this window's candles. */
+function LiquidityEmpty({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <div className="mt-4 flex flex-col items-center justify-center rounded-panel border border-dashed border-border px-6 py-8 text-center">
+      <WifiOff size={18} strokeWidth={1.5} className="text-faint" />
+      <p className="mt-3 text-sm font-medium text-foreground">No analysis for this window</p>
+      <p className="mt-1 max-w-60 text-xs leading-relaxed text-muted">{message}</p>
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-4 rounded-full border border-border px-3.5 py-1.5 text-xs font-medium text-muted transition-colors duration-200 hover:bg-tint/[0.05] hover:text-foreground"
+        >
+          Retry
+        </button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Forge's signature depth view — where liquidity actually sits, per window.
+ * Every level is computed by the Market Intelligence Engine from real
+ * CoinGecko OHLC candles: swing/equal/range/previous-period highs and lows
+ * with deterministic significance filtering. Unsupported windows show an
+ * honest empty state instead of fabricated numbers.
+ */
 export function LiquiditySnapshot({
   coin,
   timeframeId,
@@ -115,13 +215,8 @@ export function LiquiditySnapshot({
   timeframeId: LiquidityTimeframeId
   onTimeframeChange: (id: LiquidityTimeframeId) => void
 }) {
-  const timeframe = useMemo(
-    () =>
-      liquidityTimeframes.find((tf) => tf.id === timeframeId) ??
-      liquidityTimeframes.find((tf) => tf.id === DEFAULT_LIQUIDITY_TIMEFRAME)!,
-    [timeframeId],
-  )
-  const items = useMemo(() => liquiditySnapshot(coin, timeframe), [coin, timeframe])
+  const { status, analysis, message, fetchedAt, refresh } = useMarketIntelligence(coin, timeframeId)
+  const items = analysis ? buildCards(analysis) : []
 
   return (
     <section>
@@ -142,35 +237,51 @@ export function LiquiditySnapshot({
         </div>
       </div>
 
-      {/* Keyed by timeframe — each switch remounts and replays the stagger. */}
-      <motion.div
-        key={timeframeId}
-        initial="hidden"
-        animate="visible"
-        variants={{
-          hidden: {},
-          visible: { transition: { staggerChildren: 0.045 } },
-        }}
-        className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-2"
-      >
-        {items.map((item) => (
-          <motion.div
-            key={item.label}
-            variants={{
-              hidden: { opacity: 0, y: 8 },
-              visible: {
-                opacity: 1,
-                y: 0,
-                transition: { duration: 0.32, ease: ease.smooth },
-              },
-            }}
-          >
-            <LiquidityCard item={item} />
-          </motion.div>
-        ))}
-      </motion.div>
+      {status === 'loading' ? (
+        <LiquiditySkeleton />
+      ) : status === 'ready' && items.length > 0 ? (
+        /* Keyed by timeframe — each switch remounts and replays the stagger. */
+        <motion.div
+          key={timeframeId}
+          initial="hidden"
+          animate="visible"
+          variants={{
+            hidden: {},
+            visible: { transition: { staggerChildren: 0.045 } },
+          }}
+          className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-2"
+        >
+          {items.map((item) => (
+            <motion.div
+              key={item.label}
+              variants={{
+                hidden: { opacity: 0, y: 8 },
+                visible: {
+                  opacity: 1,
+                  y: 0,
+                  transition: { duration: 0.32, ease: ease.smooth },
+                },
+              }}
+            >
+              <LiquidityCard item={item} />
+            </motion.div>
+          ))}
+        </motion.div>
+      ) : (
+        <LiquidityEmpty message={message ?? 'No historical data for this window.'} onRetry={status === 'error' ? refresh : undefined} />
+      )}
 
-      <DataStatus />
+      <LiveDataStatus
+        source="CoinGecko · OHLC"
+        updatedAt={status === 'ready' ? fetchedAt : null}
+        note={
+          timeframeId === '1M' || timeframeId === '5M' || timeframeId === '15M'
+            ? 'Provider publishes no sub-30m OHLC'
+            : status === 'loading'
+              ? 'Calculating…'
+              : 'Awaiting historical feed'
+        }
+      />
     </section>
   )
 }
