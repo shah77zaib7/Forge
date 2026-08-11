@@ -150,6 +150,37 @@ describe('B — XAG/USD identity', () => {
       expect(source?.symbol).toBe('XAG/USD')
     }
   })
+
+  it('runs the full XAG/USD pipeline — fetch → normalize → Liquidity Model zones', async () => {
+    // A real Twelve Data-shaped XAG/USD 1h response (silver price scale,
+    // 5-decimal strings) through the actual provider + engine — proving
+    // Silver is handled identically to Gold end to end.
+    const values = Array.from({ length: 60 }, (_, index) => [
+      `2026-08-0${(index % 9) + 1} 1${index % 10}:00:00`,
+      63.5 + index * 0.05,
+      63.5 + index * 0.05 + 0.2,
+      63.5 + index * 0.05 - 0.2,
+      63.5 + index * 0.05 + 0.05,
+      1000 + index,
+    ] as [string, number, number, number, number, number])
+    vi.mocked(fetch).mockResolvedValue(
+      okResponse(tdValues(values), { 'api-credits-used': '1', 'api-credits-left': '7' }),
+    )
+    const series = await twelveDataHistoryProvider.fetchWindowCandles('XAG/USD', '1H', undefined)
+    expect(series).not.toBeNull()
+    expect(series!.provider).toBe('twelvedata')
+    expect(series!.symbol).toBe('XAG/USD')
+    expect(series!.granularity).toBe('1h')
+    expect(series!.candles.length).toBe(60)
+
+    const analysis = analyzeTimeframe(series!.candles, series!.candles[series!.candles.length - 1].close, '1H', '1h')
+    expect(analysis.candleCount).toBe(60)
+    expect(analysis.liquidity.buySide.length).toBeGreaterThan(0)
+    expect(analysis.liquidity.sellSide.length).toBeGreaterThan(0)
+    // Never a crypto proxy.
+    expect(series!.provider).not.toBe('binance')
+    expect(series!.provider).not.toBe('coingecko')
+  })
 })
 
 /* ------------------------------------------------------------------ */
