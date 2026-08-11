@@ -371,6 +371,19 @@ describe('Twelve Data diagnostics', () => {
     expect(twelveDataDiagnostics().lastOutcome).toBe('empty_response')
   })
 
+  it('redacts the key from any API error message that echoes it', async () => {
+    // Malicious/edge payload: the API error echoes the key value back.
+    vi.mocked(fetch).mockResolvedValue(
+      okResponse({ code: 400, message: 'invalid key test-key was rejected', status: 'error' }),
+    )
+    const failure = await twelveDataHistoryProvider
+      .fetchWindowCandles('XAU/USD', '1H', undefined)
+      .then(() => null, (cause: unknown) => cause)
+    expect(String(failure)).toContain('[redacted]')
+    expect(String(failure)).not.toContain('test-key')
+    expect(JSON.stringify(twelveDataDiagnostics())).not.toContain('test-key')
+  })
+
   it('reports success and records it in the snapshot', async () => {
     vi.mocked(fetch).mockResolvedValue(
       okResponse(tdValues(makeValues(40)), { 'api-credits-used': '1', 'api-credits-left': '7' }),

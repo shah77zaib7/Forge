@@ -138,11 +138,10 @@ export function useMarketIntelligence(
           : 'ready'
         : 'loading'
 
-  // Dev transparency even when no series exists — e.g. a missing Twelve Data
-  // key short-circuits the fetch, and the handle must still say so instead
-  // of silently showing nothing.
+  // Transparency even when no series exists — e.g. a missing Twelve Data key
+  // short-circuits the fetch, and the handle must still say so instead of
+  // silently showing nothing. Safe in production: it never contains the key.
   useEffect(() => {
-    if (!import.meta.env.DEV) return
     ;(window as unknown as { __forgeLiquidity?: unknown }).__forgeLiquidity = {
       asset: coin?.id,
       timeframe: timeframeId,
@@ -152,7 +151,7 @@ export function useMarketIntelligence(
   }, [coin?.id, timeframeId, status])
 
   const message = error
-    ? 'Historical data temporarily unavailable. Live prices are unaffected.'
+    ? `Historical data temporarily unavailable. Live prices are unaffected. ${error}`
     : !sourceAvailable
       ? (coin ? unavailableReason(coin, timeframeId) : 'No market-data source configured for this asset.')
       : analysis?.insufficient

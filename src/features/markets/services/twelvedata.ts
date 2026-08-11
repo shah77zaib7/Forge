@@ -57,6 +57,14 @@ export function twelveDataKey(): string | null {
   return apiKey
 }
 
+/**
+ * Defensive redaction — never let an API-provided error message echo the
+ * key value into the UI, logs or diagnostics.
+ */
+function redact(text: string): string {
+  return apiKey && text.includes(apiKey) ? text.split(apiKey).join('[redacted]') : text
+}
+
 /** Test seam — inject or clear the key without touching process env. */
 export function setTwelveDataKeyForTests(key: string | null): void {
   apiKey = key
@@ -363,7 +371,7 @@ async function fetchTwelveDataSeries(
     diagnostics.lastError = 'VITE_TWELVEDATA_API_KEY not configured'
     diagnostics.lastErrorAt = Date.now()
     throw new Error(
-      'Twelve Data is not configured — set VITE_TWELVEDATA_API_KEY to enable Spot Gold / Spot Silver OHLC.',
+      redact('Twelve Data is not configured — set VITE_TWELVEDATA_API_KEY to enable Spot Gold / Spot Silver OHLC.'),
     )
   }
   if (twelveDataBudgetExhausted()) {
@@ -371,7 +379,7 @@ async function fetchTwelveDataSeries(
     diagnostics.lastError = 'Daily credit budget reached'
     diagnostics.lastErrorAt = Date.now()
     throw new Error(
-      `Twelve Data daily budget reached (${TWELVE_DATA_BUDGET_HARD_STOP}/${TWELVE_DATA_DAILY_BUDGET} credits). Analysis resumes after midnight UTC.`,
+      redact(`Twelve Data daily budget reached (${TWELVE_DATA_BUDGET_HARD_STOP}/${TWELVE_DATA_DAILY_BUDGET} credits). Analysis resumes after midnight UTC.`),
     )
   }
 
@@ -396,12 +404,12 @@ async function fetchTwelveDataSeries(
         diagnostics.lastOutcome = 'rate_limit'
         diagnostics.lastError = 'HTTP 429 — credits exhausted for this minute'
         diagnostics.lastErrorAt = Date.now()
-        throw new RateLimitError(429, 'Twelve Data rate limit reached — retry in a moment (credits reset each minute)')
+        throw new RateLimitError(429, redact('Twelve Data rate limit reached — retry in a moment (credits reset each minute)'))
       }
       diagnostics.lastOutcome = 'request_failure'
       diagnostics.lastError = `HTTP ${response.status}`
       diagnostics.lastErrorAt = Date.now()
-      throw new Error(`Twelve Data request failed (${response.status})`)
+      throw new Error(redact(`Twelve Data request failed (${response.status})`))
     }
     const payload: unknown = await response.json()
     const apiError = parseTimeSeriesError(payload)
@@ -409,22 +417,22 @@ async function fetchTwelveDataSeries(
       // 429 comes back both as an HTTP status and as a JSON error body.
       if (apiError.code === 429) {
         diagnostics.lastOutcome = 'rate_limit'
-        diagnostics.lastError = apiError.message
+        diagnostics.lastError = redact(apiError.message)
         diagnostics.lastErrorAt = Date.now()
-        throw new RateLimitError(429, 'Twelve Data rate limit reached — retry in a moment (credits reset each minute)')
+        throw new RateLimitError(429, redact('Twelve Data rate limit reached — retry in a moment (credits reset each minute)'))
       }
       diagnostics.lastOutcome = 'unsupported_symbol'
-      diagnostics.lastError = apiError.message
+      diagnostics.lastError = redact(apiError.message)
       diagnostics.lastErrorAt = Date.now()
-      throw new Error(`Twelve Data: ${apiError.message}`)
+      throw new Error(redact(`Twelve Data: ${apiError.message}`))
     }
     const candles = parseTimeSeriesPayload(payload)
     if (candles.length < MIN_CANDLES) {
       diagnostics.lastOutcome = 'empty_response'
-      diagnostics.lastError = `no usable candles for ${symbol} on ${plan.window}`
+      diagnostics.lastError = redact(`no usable candles for ${symbol} on ${plan.window}`)
       diagnostics.lastErrorAt = Date.now()
       throw new Error(
-        `Twelve Data returned no usable candles for ${symbol} on ${plan.window} (empty response) — no analysis is possible for this window.`,
+        redact(`Twelve Data returned no usable candles for ${symbol} on ${plan.window} (empty response) — no analysis is possible for this window.`),
       )
     }
     diagnostics.lastOutcome = 'success'
