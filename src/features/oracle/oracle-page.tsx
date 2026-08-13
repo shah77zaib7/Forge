@@ -28,6 +28,7 @@ import { OracleSidebar } from './components/sidebar'
 import { cardSummary, marketHealth, newId, nowLabel } from './data'
 import { useMarketIntelligence } from '@/features/markets/hooks/use-market-intelligence'
 import { surfaceSource } from '@/features/markets/services/market-router'
+import { useForgeV2 } from '@/features/markets/services/forge-v2/store'
 import { buildMarketContext } from './services/market-context'
 import { loadSavedAnalyses, persistSavedAnalyses } from './services/history'
 import type { OracleMessage, OracleMode, SavedAnalysis, Suggestion } from './types'
@@ -40,13 +41,14 @@ import type { OracleMessage, OracleMode, SavedAnalysis, Suggestion } from './typ
  *
  * Responses route ONE normalized payload (real candles + Liquidity Model +
  * Setup Intelligence) through the selected Oracle model — the deterministic
- * Local engine by default, or the server model router (Claude/GPT/Gemini/
- * AgentRouter) when configured. Failures surface as honest error cards.
- * Market data is live, from the shared store.
+ * Local engine by default, or Gemini (the only external AI provider) when
+ * configured. Failures surface as honest error cards; Oracle never silently
+ * falls back from Gemini to Local. Market data is live, from the shared store.
  */
 export function OraclePage() {
   const { preferences } = usePreferences()
   const { modelId } = useAi()
+  const { config: v2Config } = useForgeV2()
   const coins = useCoins()
   const { loading, refresh } = useMarketData()
   const [messages, setMessages] = useState<OracleMessage[]>([])
@@ -211,6 +213,7 @@ export function OraclePage() {
         analysis: current.intelligence.analysis,
         candles: current.intelligence.candles,
         snapshot: current.snapshot,
+        v2Config,
         source: current.snapshot?.source ?? 'unknown',
         freshness: current.intelligence.freshness,
         requestedAnalysis: prompt,
@@ -288,7 +291,7 @@ export function OraclePage() {
         sendingRef.current = false
       }
     },
-    [mode, modelId],
+    [mode, modelId, v2Config],
   )
 
   function send(text: string, coinId?: string, chart?: Coin) {

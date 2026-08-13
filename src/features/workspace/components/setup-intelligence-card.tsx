@@ -7,13 +7,10 @@ import { ease } from '@/design/motion'
 import { useMarketIntelligence } from '@/features/markets/hooks/use-market-intelligence'
 import { formatMarketPrice } from '@/features/markets/lib/format'
 import { surfaceSource } from '@/features/markets/services/market-router'
-import {
-  assessSetupIntelligence,
-  type Confirmation,
-  type Displacement,
-  type Retracement,
-  type SetupIntelligence,
-} from '@/features/markets/services/setup-intelligence'
+import { analyzeForgeV2, type ForgeV2Input } from '@/features/markets/services/forge-v2/engine'
+import { useForgeV2 } from '@/features/markets/services/forge-v2/store'
+import type { ForgeMarketState } from '@/features/markets/services/forge-v2/types'
+import type { Confirmation, Displacement, Retracement } from '@/features/markets/services/setup-intelligence'
 import type { Coin } from '@/features/markets/types'
 import { cn } from '@/lib/cn'
 
@@ -22,7 +19,7 @@ import { LiveDataStatus } from './live-data-status'
 import { SectionHeading } from './section-heading'
 
 const levelMeta: Record<
-  SetupIntelligence['setupQuality']['level'],
+  ForgeMarketState['scoring']['level'],
   { label: string; chip: string; dot: string; text: string }
 > = {
   strong: {
@@ -51,7 +48,7 @@ const levelMeta: Record<
   },
 }
 
-const familyLabel: Record<SetupIntelligence['setupQuality']['family'], string> = {
+const familyLabel: Record<ForgeMarketState['scoring']['family'], string> = {
   liquidity_sweep: 'Liquidity sweep',
   displacement: 'Displacement',
   confluence: 'Confluence',
@@ -65,14 +62,24 @@ const confirmationLabel: Record<Confirmation['kind'], string> = {
   structure_reclaim: 'Structure reclaim',
 }
 
+/** Contribution rows for the traceable score — one group, its points. */
+const CONTRIBUTION_GROUPS: Array<{ key: keyof ForgeMarketState['scoring']['contributions']; label: string }> = [
+  { key: 'liquidity', label: 'Liquidity' },
+  { key: 'sweep', label: 'Sweep' },
+  { key: 'displacement', label: 'Displacement' },
+  { key: 'pullback', label: 'Pullback' },
+  { key: 'confirmation', label: 'Confirmation' },
+  { key: 'context', label: 'Context' },
+]
+
 function directionWord(direction: 'long' | 'short' | null): string {
   if (direction === 'long') return 'Long'
   if (direction === 'short') return 'Short'
   return '—'
 }
 
-function sweepValue(setup: SetupIntelligence): { value: string; tone: 'up' | 'down' | 'flat' } {
-  const sweep = setup.sweep
+function sweepValue(state: ForgeMarketState): { value: string; tone: 'up' | 'down' | 'flat' } {
+  const sweep = state.sweeps.read
   if (!sweep) return { value: 'None recent', tone: 'flat' }
   const direction = sweep.direction === 'long' ? 'up' : 'down'
   const base = `${directionWord(sweep.direction)} · ${sweep.levelPrice !== null ? formatMarketPrice(sweep.levelPrice) : '—'}`
@@ -96,7 +103,8 @@ function retracementValue(retracement: Retracement | null): { value: string; ton
   }
 }
 
-function confirmationValue(confirmation: Confirmation | null): { value: string; tone: 'up' | 'down' | 'flat' } {
+function confirmationValue(state: ForgeMarketState): { value: string; tone: 'up' | 'down' | 'flat' } {
+  const confirmation = state.confirmation.read
   if (!confirmation) return { value: 'None yet', tone: 'flat' }
   return {
     value: `${directionWord(confirmation.direction)} ${confirmationLabel[confirmation.kind]}`,
@@ -166,14 +174,22 @@ export function SetupIntelligenceCard({ coin, timeframe }: { coin: Coin; timefra
   const { status, analysis, candles, provider, symbol, dataAt, freshness, message, refresh } =
     useMarketIntelligence(coin, timeframe.id)
   const reduceMotion = useReducedMotion()
+  const { config } = useForgeV2()
 
-  const setup = useMemo<SetupIntelligence | null>(() => {
+  const setup = useMemo<ForgeMarketState | null>(() => {
     if (status !== 'ready' || !analysis || analysis.insufficient || !candles) return null
-    return assessSetupIntelligence(analysis, candles, coin.ticker, {})
-  }, [status, analysis, candles, coin.ticker])
+    const input: ForgeV2Input = {
+      asset: coin.ticker,
+      timeframe: timeframe.id,
+      analysis,
+      candles,
+      config,
+    }
+    return analyzeForgeV2(input)
+  }, [status, analysis, candles, coin.ticker, timeframe.id, config])
 
   const ready = setup !== null
-  const meta = ready ? levelMeta[setup.setupQuality.level] : levelMeta.none
+  const meta = ready ? levelMeta[setup.scoring.level] : levelMeta.none
 
   return (
     <section>
@@ -226,9 +242,9 @@ export function SetupIntelligenceCard({ coin, timeframe }: { coin: Coin; timefra
                   {meta.label}
                 </span>
                 <span className="rounded-full border border-border bg-tint/[0.04] px-2 py-1 font-mono text-[10px] tabular-nums text-muted">
-                  {familyLabel[setup.setupQuality.family]}
+                  {familyLabel[setup.scoring.family]}
                 </span>
-                <span className="font-mono text-[10px] tabular-nums text-faint">{setup.setupQuality.score}/100</span>
+                <span className="font-mono text-[10px] tabular-nums text-faint">{setup.scoring.total}/100</span>
               </div>
             </div>
 
@@ -240,7 +256,7 @@ export function SetupIntelligenceCard({ coin, timeframe }: { coin: Coin; timefra
               transition={{ duration: 0.3, ease: ease.smooth }}
               className="mt-4 text-sm leading-relaxed text-foreground/85"
             >
-              {setup.read}
+              {setup.setup.read}
             </motion.p>
 
             {/* Detection grid. */}
@@ -255,42 +271,82 @@ export function SetupIntelligenceCard({ coin, timeframe }: { coin: Coin; timefra
               <DetectionRow
                 icon={<Zap size={12} strokeWidth={1.75} className="text-faint" />}
                 label="Displacement"
-                value={displacementValue(setup.displacement).value}
-                tone={displacementValue(setup.displacement).tone}
+                value={displacementValue(setup.displacement.read).value}
+                tone={displacementValue(setup.displacement.read).tone}
                 delay={0.06}
               />
               <DetectionRow
                 icon={<Crosshair size={12} strokeWidth={1.75} className="text-faint" />}
                 label="Retracement"
-                value={retracementValue(setup.retracement).value}
-                tone={retracementValue(setup.retracement).tone}
+                value={retracementValue(setup.pullback.read).value}
+                tone={retracementValue(setup.pullback.read).tone}
                 delay={0.12}
               />
               <DetectionRow
                 icon={<Activity size={12} strokeWidth={1.75} className="text-faint" />}
                 label="Confirmation"
-                value={confirmationValue(setup.confirmation).value}
-                tone={confirmationValue(setup.confirmation).tone}
+                value={confirmationValue(setup).value}
+                tone={confirmationValue(setup).tone}
                 delay={0.18}
               />
             </div>
 
+            {/* Traceable score — every group contribution, live from V2. */}
+            <div className="mt-5 grid grid-cols-3 gap-1.5 border-t border-border pt-4">
+              {CONTRIBUTION_GROUPS.map(({ key, label }) => {
+                const points = setup.scoring.contributions[key]
+                const active = points > 0
+                return (
+                  <div
+                    key={key}
+                    className={cn(
+                      'rounded-lg border px-2 py-1.5 text-center',
+                      active ? 'border-positive/20 bg-positive/[0.04]' : 'border-border/60 bg-tint/[0.02]',
+                    )}
+                  >
+                    <p className="text-[9px] font-medium uppercase tracking-[0.12em] text-faint">{label}</p>
+                    <p
+                      className={cn(
+                        'mt-0.5 font-mono text-xs tabular-nums',
+                        active ? 'text-positive' : 'text-faint',
+                      )}
+                    >
+                      +{points}
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+            <p className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-[0.12em] text-faint">
+              <span>Forge V2 · config v{setup.metadata.configVersion}</span>
+              {setup.scoring.cappedByNoConfirmation && <span className="text-warning">No-confirmation cap applied</span>}
+              {setup.confirmation.timeframe !== timeframe.id && setup.confirmation.read && (
+                <span>Confirmation on {setup.confirmation.timeframe}</span>
+              )}
+            </p>
+
             {/* Why — one measurable fact per reason. */}
-            {setup.setupQuality.reasons.length > 0 && (
+            {setup.scoring.reasons.length > 0 && (
               <ul className="mt-5 space-y-2 border-t border-border pt-4">
-                {setup.setupQuality.reasons.map((reason) => (
+                {setup.scoring.reasons.map((reason) => (
                   <li key={reason} className="flex items-start gap-2 text-xs leading-relaxed text-muted">
                     <ShieldCheck size={13} strokeWidth={1.75} className="mt-0.5 shrink-0 text-faint" />
+                    <span>{reason}</span>
+                  </li>
+                ))}
+                {setup.scoring.missing.map((reason) => (
+                  <li key={reason} className="flex items-start gap-2 text-xs leading-relaxed text-warning/80">
+                    <Minus size={13} strokeWidth={1.75} className="mt-0.5 shrink-0 text-warning/70" />
                     <span>{reason}</span>
                   </li>
                 ))}
               </ul>
             )}
 
-            {setup.confirmation && (
+            {setup.confirmation.read && (
               <p className="mt-4 flex items-center gap-1.5 text-[11px] text-muted">
                 <Check size={12} strokeWidth={2} className="text-positive" />
-                {setup.confirmation.description}
+                {setup.confirmation.read.description}
               </p>
             )}
           </div>

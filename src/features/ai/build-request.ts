@@ -1,7 +1,9 @@
 import type { Coin } from '@/features/markets/types'
 import type { TimeframeAnalysis } from '@/features/markets/services/market-intelligence'
 import type { Candle } from '@/features/markets/services/history'
-import { assessSetupIntelligence, type SetupIntelligence } from '@/features/markets/services/setup-intelligence'
+import { analyzeForgeV2 } from '@/features/markets/services/forge-v2/engine'
+import type { V2ConfigPatch } from '@/features/markets/services/forge-v2/config'
+import type { ForgeMarketState } from '@/features/markets/services/forge-v2/types'
 import type { MarketContextSnapshot } from '@/features/oracle/types'
 import type { IntelligenceWindowId } from '@/features/markets/hooks/use-market-intelligence'
 import type {
@@ -55,41 +57,56 @@ function snapshotFromMarketContext(snapshot: MarketContextSnapshot | null): Supp
   }
 }
 
-function setupFromEngine(setup: SetupIntelligence | null): SuppliedSetupContext | null {
-  if (!setup || setup.status !== 'ready') return null
+/** The canonical Forge V2 state → the supplied setup context (V2 shape). */
+function setupFromForgeState(state: ForgeMarketState): SuppliedSetupContext {
+  const q = state.scoring
+  const confirmation = state.confirmation.read
   return {
-    family: setup.setupQuality.family,
-    level: setup.setupQuality.level,
-    score: setup.setupQuality.score,
-    sweep: setup.sweep
+    family: q.family,
+    level: q.level,
+    score: q.total,
+    sweep: state.sweeps.read
       ? {
-          direction: setup.sweep.direction,
-          levelPrice: setup.sweep.levelPrice,
-          returned: setup.sweep.returned,
+          direction: state.sweeps.read.direction,
+          levelPrice: state.sweeps.read.levelPrice,
+          returned: state.sweeps.read.returned,
         }
       : null,
-    displacement: setup.displacement
+    displacement: state.displacement.read
       ? {
-          direction: setup.displacement.direction,
-          strength: setup.displacement.strength,
-          rangeExpansion: setup.displacement.evidence.rangeExpansion,
-          bodyRatio: setup.displacement.evidence.bodyRatio,
-          directionalConsistency: setup.displacement.evidence.directionalConsistency,
+          direction: state.displacement.read.direction === 'up' ? 'up' : 'down',
+          strength: state.displacement.read.strength,
+          rangeExpansion: state.displacement.read.evidence.rangeExpansion,
+          bodyRatio: state.displacement.read.evidence.bodyRatio,
+          directionalConsistency: state.displacement.read.evidence.directionalConsistency,
         }
       : null,
-    retracement: setup.retracement
+    retracement: state.pullback.read
       ? {
-          depthPercent: setup.retracement.depthPercent,
-          reaction: setup.retracement.reaction,
+          depthPercent: state.pullback.read.depthPercent,
+          reaction: state.pullback.read.reaction,
         }
       : null,
-    confirmation: setup.confirmation
-      ? {
-          kind: setup.confirmation.kind,
-          direction: setup.confirmation.direction,
-        }
+    confirmation: confirmation
+      ? { kind: confirmation.kind, direction: confirmation.direction, timeframe: state.confirmation.timeframe }
       : null,
-    reasons: setup.setupQuality.reasons,
+    reasons: q.reasons,
+    v2: {
+      engine: state.engine,
+      version: state.version,
+      contributions: q.contributions,
+      missing: q.missing,
+      confluenceBonus: q.confluenceBonus,
+      cappedByNoConfirmation: q.cappedByNoConfirmation,
+      context: {
+        structure: state.context.structure,
+        opposingLiquidity: state.context.opposingLiquidity,
+        volatility: state.context.volatility,
+      },
+      invalidation: state.setup.invalidation,
+      setupRead: state.setup.read,
+      configVersion: state.metadata.configVersion,
+    },
   }
 }
 
@@ -101,6 +118,10 @@ export interface BuildOracleRequestInput {
   snapshot: MarketContextSnapshot | null
   /** Precomputed Setup Intelligence (from the same candles) — optional. */
   setupContext?: SuppliedSetupContext | null
+  /** Canonical Forge V2 state — takes precedence when supplied. */
+  forgeState?: ForgeMarketState | null
+  /** Active V2 config — used when the canonical state must be computed here. */
+  v2Config?: V2ConfigPatch | null
   source: string
   freshness: string
   requestedAnalysis: string
@@ -122,10 +143,22 @@ export function buildOracleRequest(input: BuildOracleRequestInput): OracleApiReq
 
   let setupContext = input.setupContext ?? null
   if (!setupContext && analysis && candles && !analysis.insufficient) {
-    // Compute the deterministic Step 10 read from the exact same candles —
-    // one engine, one source of truth.
-    const setup = assessSetupIntelligence(analysis, candles, coin.ticker, {})
-    setupContext = setupFromEngine(setup)
+    // The canonical V2 state is the source of truth — computed from the
+    // exact same candles through the SAME engine as the Workspace card, so
+    // Oracle and UI can never disagree. Falls back to the V1-shape read
+    // only when the V2 engine has no usable data.
+    if (input.forgeState) {
+      setupContext = setupFromForgeState(input.forgeState)
+    } else {
+      const state = analyzeForgeV2({
+        asset: coin.ticker,
+        timeframe: timeframeId,
+        analysis,
+        candles,
+        config: input.v2Config ?? undefined,
+      })
+      setupContext = setupFromForgeState(state)
+    }
   }
 
   return {

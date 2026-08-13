@@ -3,9 +3,9 @@ import { fetchJson, mergeSignal, throwProviderError, type ProviderCallOptions, t
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta'
 
 /**
- * Google Gemini adapter — first-class and independent of AgentRouter. The
- * key travels in the x-goog-api-key header (never in the URL), and is
- * never logged or returned.
+ * Google Gemini adapter — the only external AI provider. The key travels
+ * in the x-goog-api-key header (never in the URL), and is never logged or
+ * returned.
  */
 export async function callGemini(
   options: ProviderCallOptions,
@@ -24,8 +24,8 @@ export async function callGemini(
       // responseMimeType 'application/json' is Gemini's NATIVE structured
       // output — the model is constrained to emit pure JSON (no fences, no
       // prose), which is what made earlier responses unparseable. Deliberately
-      // no strict responseJsonSchema: it could 400 on older GEMINI_MODEL
-      // overrides, and the prompt already defines the exact object shape.
+      // no strict responseJsonSchema: it could 400 on older Gemini model ids,
+      // and the prompt already defines the exact object shape.
       generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 2000, temperature: 0.2 },
     }),
     signal: mergeSignal(options.signal),

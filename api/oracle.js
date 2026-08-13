@@ -29,28 +29,9 @@ function statusForCode(code) {
 
 // server/oracle/lib/models.ts
 var PROVIDER_KEYS = {
-  agentrouter: "AGENTROUTER_API_KEY",
-  anthropic: "ANTHROPIC_API_KEY",
-  openai: "OPENAI_API_KEY",
   gemini: "GEMINI_API_KEY"
 };
-var MODEL_OVERRIDES = {
-  anthropic: "ANTHROPIC_MODEL",
-  openai: "OPENAI_MODEL",
-  gemini: "GEMINI_MODEL"
-};
-function modelIdOverride(provider, env = process.env) {
-  const name = MODEL_OVERRIDES[provider];
-  const value = env[name]?.trim();
-  return value ? value : null;
-}
-function agentRouterBaseUrl(env = process.env) {
-  return env.AGENTROUTER_BASE_URL?.trim() || "https://agentrouter.org/v1";
-}
-function agentRouterModel(env = process.env) {
-  return env.AGENTROUTER_MODEL?.trim() || "claude-opus-5";
-}
-function oracleModels(env = process.env) {
+function oracleModels() {
   return [
     {
       id: "local",
@@ -61,53 +42,20 @@ function oracleModels(env = process.env) {
       description: "Deterministic Forge Liquidity Model \u2014 no external API"
     },
     {
-      id: "claude-opus-5",
-      provider: "anthropic",
-      label: "Claude Opus 5",
-      modelId: modelIdOverride("anthropic", env) ?? "claude-opus-5",
-      via: ["agentrouter", "anthropic"],
-      description: "Anthropic frontier \u2014 via AgentRouter or direct key"
-    },
-    {
-      id: "claude-opus-4-8",
-      provider: "anthropic",
-      label: "Claude Opus 4.8",
-      modelId: modelIdOverride("anthropic", env) ?? "claude-opus-4-8",
-      via: ["agentrouter", "anthropic"],
-      description: "Anthropic \u2014 via AgentRouter or direct key"
-    },
-    {
-      id: "gpt-5-6",
-      provider: "openai",
-      label: "GPT-5.6",
-      modelId: modelIdOverride("openai", env) ?? "gpt-5.6",
-      via: ["agentrouter", "openai"],
-      description: "OpenAI \u2014 via AgentRouter or direct key"
-    },
-    {
       id: "gemini",
       provider: "gemini",
       label: "Gemini",
       // gemini-2.5-pro is retired for new users (verified: HTTP 404 "no
       // longer available to new users"). gemini-3.6-flash is a current
-      // STABLE model on the official Gemini API models page. GEMINI_MODEL
-      // still overrides (e.g. gemini-3.5-flash / gemini-3.1-pro-preview).
-      modelId: modelIdOverride("gemini", env) ?? "gemini-3.6-flash",
+      // STABLE model on the official Gemini API models page.
+      modelId: "gemini-3.6-flash",
       via: ["gemini"],
       description: "Google \u2014 independent GEMINI_API_KEY"
-    },
-    {
-      id: "agentrouter",
-      provider: "agentrouter",
-      label: "AgentRouter",
-      modelId: agentRouterModel(env),
-      via: ["agentrouter"],
-      description: "Multi-model gateway \u2014 single AGENTROUTER_API_KEY"
     }
   ];
 }
-function oracleModelById(id, env = process.env) {
-  return oracleModels(env).find((model) => model.id === id) ?? null;
+function oracleModelById(id) {
+  return oracleModels().find((model) => model.id === id) ?? null;
 }
 function providerConfigured(provider, env = process.env) {
   if (provider === "local") return true;
@@ -124,12 +72,6 @@ function providerLabel(provider) {
   switch (provider) {
     case "local":
       return "Local";
-    case "agentrouter":
-      return "AgentRouter";
-    case "anthropic":
-      return "Anthropic";
-    case "openai":
-      return "OpenAI";
     case "gemini":
       return "Gemini";
   }
@@ -139,7 +81,7 @@ function missingKeysFor(entry) {
 }
 function availabilityReport(env = process.env) {
   return {
-    models: oracleModels(env).map((entry) => {
+    models: oracleModels().map((entry) => {
       const gateway = resolveGateway(entry, env);
       return {
         id: entry.id,
@@ -230,6 +172,51 @@ function snapshotField(value) {
     updatedAt: isFiniteNumber(snapshot.updatedAt) ? snapshot.updatedAt : null
   };
 }
+function v2Field(value) {
+  if (typeof value !== "object" || value === null) return null;
+  const v2 = value;
+  const contributionsRaw = typeof v2.contributions === "object" && v2.contributions !== null ? v2.contributions : {};
+  const num = (n) => isFiniteNumber(n) ? n : 0;
+  const contextRaw = typeof v2.context === "object" && v2.context !== null ? v2.context : {};
+  const structureRaw = typeof contextRaw.structure === "object" && contextRaw.structure !== null ? contextRaw.structure : {};
+  const opposingRaw = typeof contextRaw.opposingLiquidity === "object" && contextRaw.opposingLiquidity !== null ? contextRaw.opposingLiquidity : {};
+  const volatilityRaw = typeof contextRaw.volatility === "object" && contextRaw.volatility !== null ? contextRaw.volatility : {};
+  const confluence = typeof v2.confluenceBonus === "object" && v2.confluenceBonus !== null ? v2.confluenceBonus : null;
+  return {
+    engine: strField(v2.engine, 40) ?? "forge-v2",
+    version: num(v2.version),
+    contributions: {
+      liquidity: num(contributionsRaw.liquidity),
+      sweep: num(contributionsRaw.sweep),
+      displacement: num(contributionsRaw.displacement),
+      pullback: num(contributionsRaw.pullback),
+      confirmation: num(contributionsRaw.confirmation),
+      context: num(contributionsRaw.context)
+    },
+    missing: Array.isArray(v2.missing) ? v2.missing.filter((r) => typeof r === "string" && r.length > 0).slice(0, 12) : [],
+    confluenceBonus: confluence ? { family: strField(confluence.family, 40) ?? "none", points: num(confluence.points) } : null,
+    cappedByNoConfirmation: Boolean(v2.cappedByNoConfirmation),
+    context: {
+      structure: {
+        trend: strField(structureRaw.trend, 40),
+        label: strField(structureRaw.label, 40),
+        aligned: Boolean(structureRaw.aligned)
+      },
+      opposingLiquidity: {
+        side: opposingRaw.side === "buy" || opposingRaw.side === "sell" ? opposingRaw.side : null,
+        price: isFiniteNumber(opposingRaw.price) ? opposingRaw.price : null,
+        distancePercent: isFiniteNumber(opposingRaw.distancePercent) ? opposingRaw.distancePercent : null
+      },
+      volatility: {
+        atrPercent: isFiniteNumber(volatilityRaw.atrPercent) ? volatilityRaw.atrPercent : null,
+        elevated: Boolean(volatilityRaw.elevated)
+      }
+    },
+    invalidation: strField(v2.invalidation, 240),
+    setupRead: strField(v2.setupRead, 1e3) ?? "",
+    configVersion: num(v2.configVersion)
+  };
+}
 function setupField(value) {
   if (typeof value !== "object" || value === null) return null;
   const setup = value;
@@ -261,9 +248,11 @@ function setupField(value) {
     } : null,
     confirmation: confirmation ? {
       kind: strField(confirmation.kind, 40) ?? "unknown",
-      direction: confirmation.direction === "long" || confirmation.direction === "short" ? confirmation.direction : null
+      direction: confirmation.direction === "long" || confirmation.direction === "short" ? confirmation.direction : null,
+      timeframe: strField(confirmation.timeframe, 8) ?? "1m"
     } : null,
-    reasons: Array.isArray(setup.reasons) ? setup.reasons.filter((r) => typeof r === "string" && r.length > 0).slice(0, 12) : []
+    reasons: Array.isArray(setup.reasons) ? setup.reasons.filter((r) => typeof r === "string" && r.length > 0).slice(0, 12) : [],
+    v2: v2Field(setup.v2)
   };
 }
 function sanitizeRequest(body) {
@@ -635,9 +624,30 @@ function buildUserPrompt(request, maxCandles = 120) {
       );
     }
     if (setupContext.confirmation) {
-      lines.push(`- Confirmation: ${setupContext.confirmation.kind} (${setupContext.confirmation.direction})`);
+      lines.push(
+        `- Confirmation: ${setupContext.confirmation.kind} (${setupContext.confirmation.direction}) \xB7 on ${setupContext.confirmation.timeframe}`
+      );
     }
     for (const reason of setupContext.reasons) lines.push(`  - why: ${reason}`);
+    if (setupContext.v2) {
+      const v2 = setupContext.v2;
+      lines.push("", "## FORGE V2 CANONICAL STATE (deterministic score \u2014 traceable contributions)");
+      lines.push(
+        `- Engine: ${v2.engine} v${v2.version} \xB7 config v${v2.configVersion}`,
+        `- Score contributions \u2192 liquidity +${v2.contributions.liquidity} \xB7 sweep +${v2.contributions.sweep} \xB7 displacement +${v2.contributions.displacement} \xB7 pullback +${v2.contributions.pullback} \xB7 confirmation +${v2.contributions.confirmation} \xB7 context +${v2.contributions.context}`,
+        `- Final score: ${setupContext.score}/100 \xB7 ${setupContext.level.toUpperCase()}`
+      );
+      if (v2.confluenceBonus) {
+        lines.push(`- Confluence bonus: +${v2.confluenceBonus.points} (${v2.confluenceBonus.family} family)`);
+      }
+      if (v2.cappedByNoConfirmation) lines.push("- No-confirmation cap applied \u2014 score clamped until confirmation evidence appears");
+      const ctx = v2.context;
+      lines.push(
+        `- Context: structure ${ctx.structure.trend ?? "n/a"} (${ctx.structure.aligned ? "aligned" : "not aligned"}) \xB7 opposing liquidity ${ctx.opposingLiquidity.distancePercent === null ? "n/a" : `${ctx.opposingLiquidity.distancePercent.toFixed(1)}% away (${ctx.opposingLiquidity.side})`} \xB7 volatility ${ctx.volatility.elevated ? "elevated" : "calm"}`
+      );
+      if (v2.invalidation) lines.push(`- Invalidation: ${v2.invalidation}`);
+      if (v2.missing.length > 0) lines.push(`- Missing/negative factors: ${v2.missing.join("; ")}`);
+    }
   } else {
     lines.push("", "## SETUP INTELLIGENCE", "- Not available for this window \u2014 do not fabricate a setup.");
   }
@@ -655,15 +665,8 @@ function buildUserPrompt(request, maxCandles = 120) {
 
 // server/oracle/lib/cost.ts
 var RATES = {
-  // Opus-class frontier models — estimates, verify against current pricing.
-  "claude-opus-5": { input: 15, output: 75 },
-  "claude-opus-4-8": { input: 15, output: 75 },
-  // GPT-5.6 — estimate; GPT-5-class pricing.
-  "gpt-5-6": { input: 2.5, output: 10 },
   // Gemini 3 class (default gemini-3.6-flash) — estimate.
-  gemini: { input: 1.25, output: 10 },
-  // AgentRouter gateway model id is dynamic — apply the gateway default.
-  agentrouter: { input: 2, output: 10 }
+  gemini: { input: 1.25, output: 10 }
 };
 var FALLBACK_RATE = { input: 2, output: 8 };
 function estimateCostUsd(modelId, promptTokens, completionTokens) {
@@ -707,102 +710,6 @@ async function fetchJson(url, init) {
   return { status: response.status, body };
 }
 
-// server/oracle/providers/openai.ts
-async function callOpenAICompatible(options) {
-  const { baseUrl, apiKey, providerLabel: providerLabel2, modelId, system, user, signal, maxTokensField = "max_tokens" } = options;
-  const { status, body } = await fetchJson(`${baseUrl.replace(/\/+$/, "")}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: modelId,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user }
-      ],
-      [maxTokensField]: 2e3,
-      temperature: 0.2
-    }),
-    signal: mergeSignal(signal)
-  });
-  if (status !== 200) {
-    throwProviderError(providerLabel2, status, body, "Provider returned an unexpected response.");
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(body);
-  } catch (cause) {
-    throwProviderError(providerLabel2, status, body, `Provider returned malformed JSON: ${String(cause)}`);
-  }
-  const choice = parsed?.choices?.[0];
-  const text = typeof choice?.message?.content === "string" ? choice.message.content : "";
-  if (!text.trim()) {
-    throwProviderError(providerLabel2, status, body, "Provider returned an empty completion.");
-  }
-  const usage = parsed?.usage;
-  const promptTokens = typeof usage?.prompt_tokens === "number" ? usage.prompt_tokens : null;
-  const completionTokens = typeof usage?.completion_tokens === "number" ? usage.completion_tokens : null;
-  return { text, promptTokens, completionTokens };
-}
-
-// server/oracle/providers/agentrouter.ts
-async function callAgentRouter(options, env = process.env) {
-  const apiKey = env.AGENTROUTER_API_KEY?.trim();
-  if (!apiKey) {
-    throw new Error("AgentRouter is not configured (AGENTROUTER_API_KEY missing).");
-  }
-  return callOpenAICompatible({
-    baseUrl: agentRouterBaseUrl(env),
-    apiKey,
-    providerLabel: "AgentRouter",
-    modelId: options.modelId,
-    system: options.system,
-    user: options.user,
-    signal: options.signal
-  });
-}
-
-// server/oracle/providers/anthropic.ts
-var ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-var ANTHROPIC_VERSION = "2023-06-01";
-async function callAnthropic(options, apiKey) {
-  const { status, body } = await fetchJson(ANTHROPIC_URL, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": ANTHROPIC_VERSION
-    },
-    body: JSON.stringify({
-      model: options.modelId,
-      max_tokens: 2e3,
-      system: options.system,
-      messages: [{ role: "user", content: options.user }]
-    }),
-    signal: mergeSignal(options.signal)
-  });
-  if (status !== 200) {
-    throwProviderError("Anthropic", status, body, "Provider returned an unexpected response.");
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(body);
-  } catch (cause) {
-    throwProviderError("Anthropic", status, body, `Provider returned malformed JSON: ${String(cause)}`);
-  }
-  const content = parsed?.content ?? [];
-  const text = content.find((block) => block.type === "text")?.text ?? "";
-  if (!text.trim()) {
-    throwProviderError("Anthropic", status, body, "Provider returned an empty completion.");
-  }
-  const usage = parsed?.usage;
-  const promptTokens = typeof usage?.input_tokens === "number" ? usage.input_tokens : null;
-  const completionTokens = typeof usage?.output_tokens === "number" ? usage.output_tokens : null;
-  return { text, promptTokens, completionTokens };
-}
-
 // server/oracle/providers/gemini.ts
 var GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
 async function callGemini(options, apiKey) {
@@ -819,8 +726,8 @@ async function callGemini(options, apiKey) {
       // responseMimeType 'application/json' is Gemini's NATIVE structured
       // output — the model is constrained to emit pure JSON (no fences, no
       // prose), which is what made earlier responses unparseable. Deliberately
-      // no strict responseJsonSchema: it could 400 on older GEMINI_MODEL
-      // overrides, and the prompt already defines the exact object shape.
+      // no strict responseJsonSchema: it could 400 on older Gemini model ids,
+      // and the prompt already defines the exact object shape.
       generationConfig: { responseMimeType: "application/json", maxOutputTokens: 2e3, temperature: 0.2 }
     }),
     signal: mergeSignal(options.signal)
@@ -846,36 +753,9 @@ async function callGemini(options, apiKey) {
 }
 
 // server/oracle/lib/router.ts
-function directAdapterFor(gateway, env) {
-  switch (gateway) {
-    case "agentrouter":
-      return (options) => callAgentRouter(options, env);
-    case "anthropic": {
-      const apiKey = env.ANTHROPIC_API_KEY?.trim() ?? "";
-      return (options) => callAnthropic(options, apiKey);
-    }
-    case "openai": {
-      const apiKey = env.OPENAI_API_KEY?.trim() ?? "";
-      return (options) => callOpenAICompatible({
-        baseUrl: "https://api.openai.com/v1",
-        apiKey,
-        providerLabel: "OpenAI",
-        modelId: options.modelId,
-        system: options.system,
-        user: options.user,
-        signal: options.signal,
-        maxTokensField: "max_completion_tokens"
-      });
-    }
-    case "gemini": {
-      const apiKey = env.GEMINI_API_KEY?.trim() ?? "";
-      return (options) => callGemini(options, apiKey);
-    }
-  }
-}
 async function routeAnalysis(request, env = process.env, signal) {
   const startedAt = Date.now();
-  const entry = oracleModelById(request.model, env);
+  const entry = oracleModelById(request.model);
   if (!entry) {
     throw new OracleApiError("unknown_model", `Unknown Oracle model "${request.model}".`);
   }
@@ -887,21 +767,21 @@ async function routeAnalysis(request, env = process.env, signal) {
     throw new OracleApiError(
       "not_configured",
       `No provider key configured for ${entry.label}.`,
-      `Configure one of: ${entry.via.filter((p) => p !== "local").map((p) => PROVIDER_KEYS[p]).join(", ")}`
+      `Configure: ${entry.via.filter((p) => p !== "local").map((p) => PROVIDER_KEYS[p]).join(", ")}`
     );
   }
-  if (gateway === "local") {
-    throw new OracleApiError("bad_request", "The local engine runs on the client \u2014 pick a server model.");
-  }
-  const call = directAdapterFor(gateway, env);
+  const apiKey = env.GEMINI_API_KEY?.trim() ?? "";
   let result;
   try {
-    result = await call({
-      modelId: entry.modelId,
-      system: buildSystemPrompt(),
-      user: buildUserPrompt(request),
-      signal
-    });
+    result = await callGemini(
+      {
+        modelId: entry.modelId,
+        system: buildSystemPrompt(),
+        user: buildUserPrompt(request),
+        signal
+      },
+      apiKey
+    );
   } catch (cause) {
     if (cause instanceof OracleApiError) throw cause;
     const label = providerLabel(gateway);

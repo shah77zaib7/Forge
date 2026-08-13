@@ -26,7 +26,7 @@ function MaskedField({ label, masked }: { label: string; masked: string }) {
 export function AccountSection() {
   // V1 placeholder selections — the mock feed stays active until real
   // provider/config integration lands; no claim of live connectivity.
-  const [aiProvider, setAiProvider] = useState('openai')
+  const [aiProvider, setAiProvider] = useState('gemini')
   const [marketProvider, setMarketProvider] = useState('mock')
 
   return (

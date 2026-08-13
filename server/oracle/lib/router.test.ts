@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { estimateCostUsd } from './cost'
 import { OracleApiError } from './errors'
-import { agentRouterBaseUrl, availabilityReport, oracleModelById, resolveGateway } from './models'
+import { availabilityReport, oracleModelById, resolveGateway } from './models'
 import { extractJson, normalizeAnalysis } from './normalize'
 import { buildSystemPrompt, buildUserPrompt } from './prompt'
 import { routeAnalysis } from './router'
@@ -14,7 +14,7 @@ import type { OracleApiRequest } from './types'
 
 function requestFixture(overrides: Partial<OracleApiRequest> = {}): OracleApiRequest {
   return {
-    model: 'claude-opus-5',
+    model: 'gemini',
     symbol: 'XAU/USD',
     timeframe: '1H',
     candles: [
@@ -70,6 +70,22 @@ function requestFixture(overrides: Partial<OracleApiRequest> = {}): OracleApiReq
       retracement: { depthPercent: 0.5, reaction: 'held' },
       confirmation: null,
       reasons: ['Buy-side swept and reclaimed'],
+      v2: {
+        engine: 'forge-v2',
+        version: 2,
+        contributions: { liquidity: 9, sweep: 15, displacement: 0, pullback: 0, confirmation: 0, context: 4 },
+        missing: ['No confirmation — score capped'],
+        confluenceBonus: null,
+        cappedByNoConfirmation: false,
+        context: {
+          structure: { trend: 'bearish', label: 'lower lows', aligned: true },
+          opposingLiquidity: { side: 'sell', price: 2290, distancePercent: 0.9 },
+          volatility: { atrPercent: 0.6, elevated: false },
+        },
+        invalidation: 'Price closes back beyond the swept buy-side level at 2325',
+        setupRead: 'Buy-side liquidity at 2325 was swept and reclaimed.',
+        configVersion: 1,
+      },
     },
     marketContext: {
       name: 'Spot Gold',
@@ -98,6 +114,18 @@ const MODEL_JSON = JSON.stringify({
   reasoning: ['Buy-side swept', 'Displacement down', 'No confirmation yet'],
 })
 
+/** A Gemini-shaped fetch response with the fixture model output. */
+function geminiFetchMock() {
+  return vi.fn(async (_url: string, _init: RequestInit) => ({
+    status: 200,
+    text: async () =>
+      JSON.stringify({
+        candidates: [{ content: { parts: [{ text: MODEL_JSON }] } }],
+        usageMetadata: { promptTokenCount: 900, candidatesTokenCount: 250 },
+      }),
+  }))
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })
@@ -107,37 +135,40 @@ afterEach(() => {
 /* ------------------------------------------------------------------ */
 
 describe('model registry', () => {
-  it('lists the full selector set with correct providers', () => {
+  it('lists exactly the Local + Gemini selector set', () => {
     const models = availabilityReport({}).models
-    expect(models.map((m) => m.id)).toEqual(['local', 'claude-opus-5', 'claude-opus-4-8', 'gpt-5-6', 'gemini', 'agentrouter'])
-    const claude = models.find((m) => m.id === 'claude-opus-5')!
-    expect(claude.label).toBe('Claude Opus 5')
-    expect(claude.requires).toEqual(['AGENTROUTER_API_KEY', 'ANTHROPIC_API_KEY'])
-    expect(claude.available).toBe(false)
-    expect(claude.gateway).toBeNull()
+    expect(models.map((m) => m.id)).toEqual(['local', 'gemini'])
+    const gemini = models.find((m) => m.id === 'gemini')!
+    expect(gemini.label).toBe('Gemini')
+    expect(gemini.requires).toEqual(['GEMINI_API_KEY'])
+    expect(gemini.available).toBe(false)
+    expect(gemini.gateway).toBeNull()
+    expect(gemini.description).not.toMatch(/AgentRouter|Anthropic|OpenAI/i)
   })
 
-  it('local is always available, gemini requires its own key', () => {
+  it('local is always available; gemini requires its own key', () => {
     const report = availabilityReport({ GEMINI_API_KEY: 'g' }).models
     expect(report.find((m) => m.id === 'local')!.available).toBe(true)
     const gemini = report.find((m) => m.id === 'gemini')!
     expect(gemini.available).toBe(true)
     expect(gemini.gateway).toBe('Gemini')
   })
+
+  it('exposes no AgentRouter/Anthropic/OpenAI model ids anywhere in the report', () => {
+    const models = availabilityReport({}).models
+    const serialized = JSON.stringify(models)
+    expect(serialized).not.toMatch(/agentrouter|anthropic|openai|claude|gpt/i)
+  })
 })
 
 describe('gateway resolution', () => {
-  it('prefers AgentRouter over direct Anthropic for Claude entries', () => {
-    const entry = oracleModelById('claude-opus-5')!
-    expect(resolveGateway(entry, { AGENTROUTER_API_KEY: 'x' })).toBe('agentrouter')
-    expect(resolveGateway(entry, { ANTHROPIC_API_KEY: 'y' })).toBe('anthropic')
-    expect(resolveGateway(entry, { AGENTROUTER_API_KEY: 'x', ANTHROPIC_API_KEY: 'y' })).toBe('agentrouter')
+  it('gemini resolves only when GEMINI_API_KEY is configured', () => {
+    const entry = oracleModelById('gemini')!
+    expect(resolveGateway(entry, { GEMINI_API_KEY: 'x' })).toBe('gemini')
     expect(resolveGateway(entry, {})).toBeNull()
-  })
-
-  it('gpt-5-6 resolves to openai when only the openai key exists', () => {
-    const entry = oracleModelById('gpt-5-6')!
-    expect(resolveGateway(entry, { OPENAI_API_KEY: 'o' })).toBe('openai')
+    expect(oracleModelById('claude-opus-5')).toBeNull()
+    expect(oracleModelById('gpt-5-6')).toBeNull()
+    expect(oracleModelById('agentrouter')).toBeNull()
   })
 })
 
@@ -158,36 +189,27 @@ describe('routeAnalysis', () => {
     })
   })
 
-  it('returns not_configured naming the missing keys when no gateway has a key', async () => {
+  it('returns not_configured naming GEMINI_API_KEY when no key is set', async () => {
     const error = await routeAnalysis(requestFixture(), {}).catch((e: unknown) => e)
     expect(error).toBeInstanceOf(OracleApiError)
     expect((error as OracleApiError).code).toBe('not_configured')
-    expect((error as OracleApiError).detail).toContain('AGENTROUTER_API_KEY')
+    expect((error as OracleApiError).detail).toContain('GEMINI_API_KEY')
   })
 
-  it('routes through AgentRouter and stamps provenance server-side', async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
-      status: 200,
-      text: async () =>
-        JSON.stringify({
-          choices: [{ message: { content: MODEL_JSON } }],
-          usage: { prompt_tokens: 1200, completion_tokens: 300 },
-        }),
-    }))
+  it('routes through Gemini and stamps provenance server-side', async () => {
+    const fetchMock = geminiFetchMock()
     vi.stubGlobal('fetch', fetchMock)
 
-    const { analysis, meta } = await routeAnalysis(requestFixture(), { AGENTROUTER_API_KEY: 'ar' })
+    const { analysis, meta } = await routeAnalysis(requestFixture(), { GEMINI_API_KEY: 'gk' })
 
-    // The request went to the AgentRouter gateway with the concrete model id.
+    // The request went to the Gemini API with the concrete model id.
     const called = fetchMock.mock.calls[0]
-    expect(String(called[0])).toContain('/chat/completions')
+    expect(String(called[0])).toContain('gemini-3.6-flash:generateContent')
     const sent = JSON.parse(String((called[1] as RequestInit).body))
-    expect(sent.model).toBe('claude-opus-5')
-    expect(sent.messages[0].role).toBe('system')
-    expect(sent.messages[1].role).toBe('user')
+    expect(sent.contents[0].role).toBe('user')
 
     // Provenance is stamped by the server — the model cannot spoof it.
-    expect(analysis.model).toEqual({ id: 'claude-opus-5', provider: 'agentrouter', label: 'Claude Opus 5' })
+    expect(analysis.model).toEqual({ id: 'gemini', provider: 'gemini', label: 'Gemini' })
     expect(analysis.sourceData).toMatchObject({
       symbol: 'XAU/USD',
       timeframe: '1H',
@@ -205,74 +227,68 @@ describe('routeAnalysis', () => {
     expect(analysis.reasoning.length).toBe(3)
 
     // Meta carries provider, tokens and an estimated cost.
-    expect(meta.provider).toBe('agentrouter')
-    expect(meta.promptTokens).toBe(1200)
-    expect(meta.completionTokens).toBe(300)
-    expect(meta.estimatedCostUsd).toBeCloseTo(1200 / 1e6 * 15 + 300 / 1e6 * 75, 5)
+    expect(meta.provider).toBe('gemini')
+    expect(meta.promptTokens).toBe(900)
+    expect(meta.completionTokens).toBe(250)
+    expect(meta.estimatedCostUsd).toBeCloseTo(900 / 1e6 * 1.25 + 250 / 1e6 * 10, 5)
   })
 
-  it('surfaces a network failure as provider_error with the real cause — never the generic message', async () => {
-    // A dead gateway host: fetch rejects (DNS/connection) instead of returning HTTP.
+  it('Gemini failure surfaces as an error — it NEVER falls back to Local', async () => {
+    // A dead gateway host: fetch rejects (DNS/connection) instead of HTTP.
     vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('fetch failed'))))
-    const error = await routeAnalysis(requestFixture(), { AGENTROUTER_API_KEY: 'ar' }).catch((e: unknown) => e)
+    const error = await routeAnalysis(requestFixture(), { GEMINI_API_KEY: 'gk' }).catch((e: unknown) => e)
     expect(error).toBeInstanceOf(OracleApiError)
     expect((error as OracleApiError).code).toBe('provider_error')
-    expect((error as OracleApiError).message).toContain('AgentRouter')
-    // The underlying cause is preserved safely — this is what makes the
-    // dead-host diagnosis visible instead of "Oracle could not complete…".
+    expect((error as OracleApiError).message).toContain('Gemini')
+    // The Local engine is never produced server-side: no ok analysis, no
+    // local provider stamp — an honest typed failure is the whole response.
+    expect((error as OracleApiError).code).not.toBe('bad_request')
+    // The underlying cause is preserved safely — visible diagnosis, not the
+    // generic "Oracle could not complete…" and never a Local substitute.
     expect((error as OracleApiError).detail).toContain('fetch failed')
   })
 
   it('maps an abort/timeout to the typed timeout code with a safe detail', async () => {
     const abortError = new DOMException('The operation was aborted', 'AbortError')
     vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(abortError)))
-    const error = await routeAnalysis(requestFixture(), { AGENTROUTER_API_KEY: 'ar' }).catch((e: unknown) => e)
+    const error = await routeAnalysis(requestFixture(), { GEMINI_API_KEY: 'gk' }).catch((e: unknown) => e)
     expect(error).toBeInstanceOf(OracleApiError)
     expect((error as OracleApiError).code).toBe('timeout')
     expect((error as OracleApiError).detail).toContain('aborted')
   })
 
-  it('defaults the AgentRouter base URL to the working gateway (agentrouter.org)', () => {
-    expect(agentRouterBaseUrl({})).toBe('https://agentrouter.org/v1')
-    // The dead api.agentrouter.dev host must never be the default.
-    expect(agentRouterBaseUrl({})).not.toContain('api.agentrouter.dev')
-    // A custom gateway still wins.
-    expect(agentRouterBaseUrl({ AGENTROUTER_BASE_URL: 'https://gw.example.com/v1' })).toBe('https://gw.example.com/v1')
-  })
-
-  it('uses a current stable Gemini model by default, with the env override intact', () => {
-    expect(oracleModelById('gemini', {})!.modelId).toBe('gemini-3.6-flash')
-    expect(oracleModelById('gemini', { GEMINI_MODEL: 'gemini-3.5-flash' })!.modelId).toBe('gemini-3.5-flash')
+  it('uses a current stable Gemini model by default', () => {
+    expect(oracleModelById('gemini')!.modelId).toBe('gemini-3.6-flash')
     // The retired 2.5-pro id must never be the default.
-    expect(oracleModelById('gemini', {})!.modelId).not.toBe('gemini-2.5-pro')
+    expect(oracleModelById('gemini')!.modelId).not.toBe('gemini-2.5-pro')
   })
 
   it('maps provider 429 to rate_limit and 500 to provider_error', async () => {
-    const fetchMock = vi.fn(async () => ({
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
       status: 429,
       text: async () => JSON.stringify({ message: 'Rate limit exceeded' }),
     }))
     vi.stubGlobal('fetch', fetchMock)
-    const rate = await routeAnalysis(requestFixture(), { AGENTROUTER_API_KEY: 'ar' }).catch((e: unknown) => e)
+    const rate = await routeAnalysis(requestFixture(), { GEMINI_API_KEY: 'gk' }).catch((e: unknown) => e)
     expect((rate as OracleApiError).code).toBe('rate_limit')
     expect((rate as OracleApiError).detail).toContain('Rate limit exceeded')
 
     fetchMock.mockResolvedValueOnce({ status: 500, text: async () => 'boom' })
     vi.stubGlobal('fetch', fetchMock)
-    const failed = await routeAnalysis(requestFixture(), { AGENTROUTER_API_KEY: 'ar' }).catch((e: unknown) => e)
+    const failed = await routeAnalysis(requestFixture(), { GEMINI_API_KEY: 'gk' }).catch((e: unknown) => e)
     expect((failed as OracleApiError).code).toBe('provider_error')
   })
 
   it('throws bad_model_output when the model returns non-JSON', async () => {
-    const fetchMock = vi.fn(async () => ({
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
       status: 200,
       text: async () =>
         JSON.stringify({
-          choices: [{ message: { content: 'Sorry, I cannot help with that.' } }],
+          candidates: [{ content: { parts: [{ text: 'Sorry, I cannot help with that.' }] } }],
         }),
     }))
     vi.stubGlobal('fetch', fetchMock)
-    const error = await routeAnalysis(requestFixture(), { AGENTROUTER_API_KEY: 'ar' }).catch((e: unknown) => e)
+    const error = await routeAnalysis(requestFixture(), { GEMINI_API_KEY: 'gk' }).catch((e: unknown) => e)
     expect((error as OracleApiError).code).toBe('bad_model_output')
   })
 })
@@ -283,22 +299,15 @@ describe('routeAnalysis', () => {
 
 describe('Gemini structured output', () => {
   it('requests native JSON output (responseMimeType application/json)', async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
-      status: 200,
-      text: async () =>
-        JSON.stringify({
-          candidates: [{ content: { parts: [{ text: MODEL_JSON }] } }],
-          usageMetadata: { promptTokenCount: 900, candidatesTokenCount: 250 },
-        }),
-    }))
+    const fetchMock = geminiFetchMock()
     vi.stubGlobal('fetch', fetchMock)
 
-    const { analysis, meta } = await routeAnalysis(requestFixture({ model: 'gemini' }), { GEMINI_API_KEY: 'gk' })
+    const { analysis, meta } = await routeAnalysis(requestFixture(), { GEMINI_API_KEY: 'gk' })
 
     const called = fetchMock.mock.calls[0]
     expect(String(called[0])).toContain('gemini-3.6-flash:generateContent')
     const sent = JSON.parse(String((called[1] as RequestInit).body))
-    // The fix: the model is constrained to emit pure JSON, no fences/prose.
+    // The model is constrained to emit pure JSON, no fences/prose.
     expect(sent.generationConfig.responseMimeType).toBe('application/json')
     expect(sent.generationConfig.maxOutputTokens).toBe(2000)
 
@@ -310,7 +319,7 @@ describe('Gemini structured output', () => {
   it('normalizes a valid Gemini JSON response end-to-end', () => {
     const analysis = normalizeAnalysis(
       MODEL_JSON,
-      requestFixture({ model: 'gemini' }),
+      requestFixture(),
       { id: 'gemini', provider: 'gemini', label: 'Gemini' },
       1234,
     )
@@ -394,7 +403,7 @@ describe('normalizeAnalysis', () => {
     const analysis = normalizeAnalysis(
       JSON.stringify({ summary: 'x', sourceData: { symbol: 'FAKE', source: 'FakeSource' } }),
       requestFixture(),
-      { id: 'claude-opus-5', provider: 'anthropic', label: 'Claude Opus 5' },
+      { id: 'gemini', provider: 'gemini', label: 'Gemini' },
     )
     expect(analysis.sourceData.symbol).toBe('XAU/USD')
     expect(analysis.sourceData.source).toBe('Twelve Data')
@@ -420,13 +429,13 @@ describe('normalizeAnalysis', () => {
 /* ------------------------------------------------------------------ */
 
 describe('estimateCostUsd', () => {
-  it('computes from input/output rates', () => {
-    expect(estimateCostUsd('claude-opus-5', 1_000_000, 0)).toBeCloseTo(15, 5)
-    expect(estimateCostUsd('gpt-5-6', 0, 1_000_000)).toBeCloseTo(10, 5)
+  it('computes from the Gemini input/output rates', () => {
+    expect(estimateCostUsd('gemini', 1_000_000, 0)).toBeCloseTo(1.25, 5)
+    expect(estimateCostUsd('gemini', 0, 1_000_000)).toBeCloseTo(10, 5)
   })
 
   it('returns null when tokens are missing — never fabricates', () => {
-    expect(estimateCostUsd('claude-opus-5', null, null)).toBeNull()
+    expect(estimateCostUsd('gemini', null, null)).toBeNull()
   })
 })
 
@@ -453,5 +462,15 @@ describe('prompt', () => {
     expect(user).toContain('Buy-side swept and reclaimed')
     // Only the last 1 candle rendered.
     expect(user.match(/^\s*\d{4}-\d{2}-\d{2}T/gm)!.length).toBe(1)
+  })
+
+  it('renders the Forge V2 canonical state when supplied', () => {
+    const user = buildUserPrompt(requestFixture())
+    expect(user).toContain('FORGE V2 CANONICAL STATE')
+    expect(user).toContain('liquidity +9')
+    expect(user).toContain('sweep +15')
+    expect(user).toContain('No confirmation — score capped')
+    expect(user).toContain('Invalidation: Price closes back beyond the swept buy-side level')
+    expect(user).toContain('config v1')
   })
 })

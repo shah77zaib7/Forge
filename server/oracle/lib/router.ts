@@ -1,56 +1,27 @@
 import { OracleApiError } from './errors'
-import { oracleModelById, PROVIDER_KEYS, providerLabel, resolveGateway, type OracleProviderId } from './models'
+import { oracleModelById, PROVIDER_KEYS, providerLabel, resolveGateway } from './models'
 import { normalizeAnalysis } from './normalize'
 import { buildSystemPrompt, buildUserPrompt } from './prompt'
 import { estimateCostUsd } from './cost'
 import type { OracleApiRequest, OracleRequestMeta } from './types'
-import type { ProviderCallOptions, ProviderCallResult } from '../providers/base'
-import { callAgentRouter } from '../providers/agentrouter'
-import { callAnthropic } from '../providers/anthropic'
+import type { ProviderCallResult } from '../providers/base'
 import { callGemini } from '../providers/gemini'
-import { callOpenAICompatible } from '../providers/openai'
 
 /**
- * The Oracle router — the ONLY place that decides which provider serves a
- * model. The frontend sends one normalized request; the router resolves the
- * model registry entry, picks the first configured gateway (AgentRouter
- * first for Claude/OpenAI entries, then direct keys, Gemini standalone),
- * calls the matching adapter, and normalizes the output. Provider keys are
- * read from process.env and never leave this layer.
+ * The Oracle router — routes every server model to Gemini, the ONLY external
+ * AI provider. The frontend sends one normalized request; the router looks up
+ * the model registry entry, verifies GEMINI_API_KEY is configured, calls the
+ * Gemini adapter, and normalizes the output. Provider keys are read from
+ * process.env and never leave this layer.
+ *
+ * There is NO fallback chain. If Gemini fails, the request fails with a
+ * typed error — the Local engine is a separate, explicit, client-side choice
+ * and is never substituted for a failed Gemini call.
  */
 
 interface RouteResult {
   analysis: import('./types').OracleAnalysis
   meta: OracleRequestMeta
-}
-
-function directAdapterFor(gateway: Exclude<OracleProviderId, 'local'>, env: NodeJS.ProcessEnv) {
-  switch (gateway) {
-    case 'agentrouter':
-      return (options: ProviderCallOptions) => callAgentRouter(options, env)
-    case 'anthropic': {
-      const apiKey = env.ANTHROPIC_API_KEY?.trim() ?? ''
-      return (options: ProviderCallOptions) => callAnthropic(options, apiKey)
-    }
-    case 'openai': {
-      const apiKey = env.OPENAI_API_KEY?.trim() ?? ''
-      return (options: ProviderCallOptions) =>
-        callOpenAICompatible({
-          baseUrl: 'https://api.openai.com/v1',
-          apiKey,
-          providerLabel: 'OpenAI',
-          modelId: options.modelId,
-          system: options.system,
-          user: options.user,
-          signal: options.signal,
-          maxTokensField: 'max_completion_tokens',
-        })
-    }
-    case 'gemini': {
-      const apiKey = env.GEMINI_API_KEY?.trim() ?? ''
-      return (options: ProviderCallOptions) => callGemini(options, apiKey)
-    }
-  }
 }
 
 /**
@@ -65,7 +36,7 @@ export async function routeAnalysis(
 ): Promise<RouteResult> {
   const startedAt = Date.now()
 
-  const entry = oracleModelById(request.model, env)
+  const entry = oracleModelById(request.model)
   if (!entry) {
     throw new OracleApiError('unknown_model', `Unknown Oracle model "${request.model}".`)
   }
@@ -80,24 +51,25 @@ export async function routeAnalysis(
     throw new OracleApiError(
       'not_configured',
       `No provider key configured for ${entry.label}.`,
-      `Configure one of: ${entry.via.filter((p) => p !== 'local').map((p) => PROVIDER_KEYS[p]).join(', ')}`,
+      `Configure: ${entry.via.filter((p) => p !== 'local').map((p) => PROVIDER_KEYS[p]).join(', ')}`,
     )
   }
-  if (gateway === 'local') {
-    // resolveGateway never returns 'local' for server models, but TS needs
-    // the narrowing: the local engine runs on the client, never here.
-    throw new OracleApiError('bad_request', 'The local engine runs on the client — pick a server model.')
-  }
 
-  const call = directAdapterFor(gateway, env)
+  // With the registry trimmed to Local + Gemini, the only server gateway is
+  // Gemini — no adapter switch, no chain to walk.
+  const apiKey = env.GEMINI_API_KEY?.trim() ?? ''
+
   let result: ProviderCallResult
   try {
-    result = await call({
-      modelId: entry.modelId,
-      system: buildSystemPrompt(),
-      user: buildUserPrompt(request),
-      signal,
-    })
+    result = await callGemini(
+      {
+        modelId: entry.modelId,
+        system: buildSystemPrompt(),
+        user: buildUserPrompt(request),
+        signal,
+      },
+      apiKey,
+    )
   } catch (cause) {
     // Keep the real provider failure visible: typed errors pass through;
     // anything else (network/DNS/TLS abort) becomes a typed provider_error
@@ -144,4 +116,3 @@ function safeErrorDetail(cause: unknown): string | undefined {
   const trimmed = message.trim().replace(/\s+/g, ' ').slice(0, 300)
   return trimmed.length > 0 ? trimmed : undefined
 }
-

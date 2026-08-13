@@ -1,17 +1,18 @@
 /**
  * Server-side Oracle model registry — the ONLY place provider/model ids live.
  *
- * Every entry declares which gateways can serve it, in priority order.
- * AgentRouter is the FIRST gateway for Claude/OpenAI entries (one key, many
- * models); the direct provider adapters (Anthropic/OpenAI/Gemini) remain
- * available with their own keys. Gemini is first-class and independent.
+ * Oracle ships exactly two engines: the deterministic Local engine
+ * (client-side, always available) and Gemini (server-side, GEMINI_API_KEY).
+ * Gemini is the ONLY external AI provider — there is no gateway chain and no
+ * fallback. If GEMINI_API_KEY is missing, Gemini reports honestly
+ * unavailable and any request for it errors; Oracle never substitutes Local
+ * (or anything else) for a failed Gemini call.
  *
- * Availability = at least one declared gateway has its key configured. The
- * router picks the first configured gateway. Keys are read from process.env
- * and NEVER logged, returned, or embedded in responses.
+ * Availability = the provider's key is configured. Keys are read from
+ * process.env and NEVER logged, returned, or embedded in responses.
  */
 
-export type OracleProviderId = 'local' | 'agentrouter' | 'anthropic' | 'openai' | 'gemini'
+export type OracleProviderId = 'local' | 'gemini'
 
 export interface OracleModelEntry {
   id: string
@@ -27,47 +28,14 @@ export interface OracleModelEntry {
 
 /** All provider keys — env name → whether it is configured. */
 export const PROVIDER_KEYS: Record<Exclude<OracleProviderId, 'local'>, string> = {
-  agentrouter: 'AGENTROUTER_API_KEY',
-  anthropic: 'ANTHROPIC_API_KEY',
-  openai: 'OPENAI_API_KEY',
   gemini: 'GEMINI_API_KEY',
-}
-
-/** Optional model-id overrides (per provider), so aliases can be tuned. */
-const MODEL_OVERRIDES: Record<string, string> = {
-  anthropic: 'ANTHROPIC_MODEL',
-  openai: 'OPENAI_MODEL',
-  gemini: 'GEMINI_MODEL',
-}
-
-export function modelIdOverride(provider: 'anthropic' | 'openai' | 'gemini', env: NodeJS.ProcessEnv = process.env): string | null {
-  const name = MODEL_OVERRIDES[provider]
-  const value = env[name]?.trim()
-  return value ? value : null
-}
-
-/**
- * AgentRouter gateway base URL (OpenAI-compatible chat completions).
- *
- * The canonical gateway is https://agentrouter.org/v1 — the api.agentrouter.dev
- * host no longer resolves (verified: DNS failure), which made every
- * AgentRouter request fail at the network layer. `AGENTROUTER_BASE_URL`
- * remains the override for a self-hosted/custom gateway.
- */
-export function agentRouterBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
-  return env.AGENTROUTER_BASE_URL?.trim() || 'https://agentrouter.org/v1'
-}
-
-/** The model id AgentRouter serves for the standalone AgentRouter entry. */
-export function agentRouterModel(env: NodeJS.ProcessEnv = process.env): string {
-  return env.AGENTROUTER_MODEL?.trim() || 'claude-opus-5'
 }
 
 /**
  * The registry. Model ids are data, not scattered literals: adjust an entry
- * here (or via the env overrides above) if a provider changes its naming.
+ * here if a provider changes its naming.
  */
-export function oracleModels(env: NodeJS.ProcessEnv = process.env): OracleModelEntry[] {
+export function oracleModels(): OracleModelEntry[] {
   return [
     {
       id: 'local',
@@ -78,54 +46,21 @@ export function oracleModels(env: NodeJS.ProcessEnv = process.env): OracleModelE
       description: 'Deterministic Forge Liquidity Model — no external API',
     },
     {
-      id: 'claude-opus-5',
-      provider: 'anthropic',
-      label: 'Claude Opus 5',
-      modelId: modelIdOverride('anthropic', env) ?? 'claude-opus-5',
-      via: ['agentrouter', 'anthropic'],
-      description: 'Anthropic frontier — via AgentRouter or direct key',
-    },
-    {
-      id: 'claude-opus-4-8',
-      provider: 'anthropic',
-      label: 'Claude Opus 4.8',
-      modelId: modelIdOverride('anthropic', env) ?? 'claude-opus-4-8',
-      via: ['agentrouter', 'anthropic'],
-      description: 'Anthropic — via AgentRouter or direct key',
-    },
-    {
-      id: 'gpt-5-6',
-      provider: 'openai',
-      label: 'GPT-5.6',
-      modelId: modelIdOverride('openai', env) ?? 'gpt-5.6',
-      via: ['agentrouter', 'openai'],
-      description: 'OpenAI — via AgentRouter or direct key',
-    },
-    {
       id: 'gemini',
       provider: 'gemini',
       label: 'Gemini',
       // gemini-2.5-pro is retired for new users (verified: HTTP 404 "no
       // longer available to new users"). gemini-3.6-flash is a current
-      // STABLE model on the official Gemini API models page. GEMINI_MODEL
-      // still overrides (e.g. gemini-3.5-flash / gemini-3.1-pro-preview).
-      modelId: modelIdOverride('gemini', env) ?? 'gemini-3.6-flash',
+      // STABLE model on the official Gemini API models page.
+      modelId: 'gemini-3.6-flash',
       via: ['gemini'],
       description: 'Google — independent GEMINI_API_KEY',
-    },
-    {
-      id: 'agentrouter',
-      provider: 'agentrouter',
-      label: 'AgentRouter',
-      modelId: agentRouterModel(env),
-      via: ['agentrouter'],
-      description: 'Multi-model gateway — single AGENTROUTER_API_KEY',
     },
   ]
 }
 
-export function oracleModelById(id: string, env: NodeJS.ProcessEnv = process.env): OracleModelEntry | null {
-  return oracleModels(env).find((model) => model.id === id) ?? null
+export function oracleModelById(id: string): OracleModelEntry | null {
+  return oracleModels().find((model) => model.id === id) ?? null
 }
 
 /** True when a provider key is configured. 'local' is always available. */
@@ -148,12 +83,6 @@ export function providerLabel(provider: OracleProviderId): string {
   switch (provider) {
     case 'local':
       return 'Local'
-    case 'agentrouter':
-      return 'AgentRouter'
-    case 'anthropic':
-      return 'Anthropic'
-    case 'openai':
-      return 'OpenAI'
     case 'gemini':
       return 'Gemini'
   }
@@ -186,7 +115,7 @@ export interface OracleModelAvailability {
 
 export function availabilityReport(env: NodeJS.ProcessEnv = process.env): OracleModelAvailability {
   return {
-    models: oracleModels(env).map((entry) => {
+    models: oracleModels().map((entry) => {
       const gateway = resolveGateway(entry, env)
       return {
         id: entry.id,

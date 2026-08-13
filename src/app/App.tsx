@@ -2,6 +2,7 @@ import { MotionConfig } from 'framer-motion'
 import { BrowserRouter } from 'react-router-dom'
 
 import { AiProvider } from '@/features/ai/store'
+import { ForgeV2Provider } from '@/features/markets/services/forge-v2/store'
 import { FavoritesProvider } from '@/store/favorites'
 import { MarketDataProvider } from '@/store/market-data'
 import { PreferencesProvider } from '@/store/preferences'
@@ -16,6 +17,8 @@ import { ThemeProvider } from './theme'
 export function App() {
   return (
     <ThemeProvider>
+      {/* Forge V2 config — ONE deterministic engine config for the whole app. */}
+      <ForgeV2Provider>
       {/* Oracle model selection + availability — independent of market data. */}
       <AiProvider>
       <FavoritesProvider>
@@ -43,6 +46,7 @@ export function App() {
         </PreferencesProvider>
       </FavoritesProvider>
       </AiProvider>
+      </ForgeV2Provider>
     </ThemeProvider>
   )
 }

@@ -170,6 +170,18 @@ export interface IntelligenceOptions {
   maxCandidatesPerSide: number
   /** Closes used for the momentum regression. */
   momentumLookback: number
+  /**
+   * Per-source importance multipliers applied to zone strength. Equal
+   * highs/lows get extra weight (stronger classification than ordinary
+   * swing liquidity) — driven by the V2 configuration.
+   */
+  sourceWeights?: {
+    equalHigh: number
+    equalLow: number
+    swing: number
+    previousDay: number
+    range: number
+  }
 }
 
 const DEFAULTS: IntelligenceOptions = {
@@ -180,6 +192,22 @@ const DEFAULTS: IntelligenceOptions = {
   minCandles: 14,
   maxCandidatesPerSide: 4,
   momentumLookback: 20,
+  sourceWeights: {
+    equalHigh: 1,
+    equalLow: 1,
+    swing: 1,
+    previousDay: 1,
+    range: 1,
+  },
+}
+
+/** The configured importance multiplier for a zone's source label. */
+function sourceWeightFor(source: string, weights: NonNullable<IntelligenceOptions['sourceWeights']>): number {
+  if (source === 'equal_high') return weights.equalHigh
+  if (source === 'equal_low') return weights.equalLow
+  if (source.startsWith('previous_')) return weights.previousDay
+  if (source.startsWith('range_')) return weights.range
+  return weights.swing
 }
 
 /* ------------------------------------------------------------------ */
@@ -345,12 +373,18 @@ interface RawLevel {
   zoneHigh: number
 }
 
-function strengthScore(deviationAtp: number, touches: number, recent: boolean, distancePercent: number): number {
+function strengthScore(
+  deviationAtp: number,
+  touches: number,
+  recent: boolean,
+  distancePercent: number,
+  weight = 1,
+): number {
   const magnitude = clamp(deviationAtp / 2.5, 0, 1) * 0.5
   const touchBonus = Math.min(Math.max(touches - 1, 0), 3) * 0.12
   const recency = recent ? 0.12 : 0.04
   const proximity = clamp(1 - distancePercent / 6, 0, 1) * 0.1
-  return clamp(magnitude + touchBonus + recency + proximity, 0.05, 1)
+  return clamp((magnitude + touchBonus + recency + proximity) * weight, 0.05, 1)
 }
 
 /** Merge pivot extremes that sit within tolerance into equal-high/low pools. */
@@ -448,6 +482,7 @@ function buildZones(
   recentCutoff: number,
   max: number,
   sweeps: SweepRecord[],
+  sourceWeights: NonNullable<IntelligenceOptions['sourceWeights']>,
 ): LiquidityCandidate[] {
   const zones: LiquidityCandidate[] = []
   for (const level of levels) {
@@ -496,7 +531,15 @@ function buildZones(
           ? 'equal_high'
           : 'equal_low'
         : level.source
-    const strength = strengthScore(level.deviationAtp, level.touches, level.origin >= recentCutoff, distancePercent)
+    // Equal highs/lows carry extra weight — the V2 config raises this above
+    // ordinary swing liquidity so equal pools classify stronger.
+    const strength = strengthScore(
+      level.deviationAtp,
+      level.touches,
+      level.origin >= recentCutoff,
+      distancePercent,
+      sourceWeightFor(source, sourceWeights),
+    )
     zones.push({
       price: level.price,
       side,
@@ -734,8 +777,9 @@ export function analyzeTimeframe(
   )
 
   const sweeps: SweepRecord[] = []
-  const buySide = buildZones(candles, highLevels, currentPrice, 'buy', timeframe, recentCutoff, opts.maxCandidatesPerSide, sweeps)
-  const sellSide = buildZones(candles, lowLevels, currentPrice, 'sell', timeframe, recentCutoff, opts.maxCandidatesPerSide, sweeps)
+  const sourceWeights = opts.sourceWeights ?? DEFAULTS.sourceWeights!
+  const buySide = buildZones(candles, highLevels, currentPrice, 'buy', timeframe, recentCutoff, opts.maxCandidatesPerSide, sweeps, sourceWeights)
+  const sellSide = buildZones(candles, lowLevels, currentPrice, 'sell', timeframe, recentCutoff, opts.maxCandidatesPerSide, sweeps, sourceWeights)
   const liquidity = { buySide, sellSide }
   const { support, resistance } = buildSupportResistance(candles, pivots, atr, currentPrice, opts)
   const structure = analyzeStructure(pivots)

@@ -164,9 +164,33 @@ export function buildUserPrompt(request: OracleApiRequest, maxCandles = 120): st
       )
     }
     if (setupContext.confirmation) {
-      lines.push(`- Confirmation: ${setupContext.confirmation.kind} (${setupContext.confirmation.direction})`)
+      lines.push(
+        `- Confirmation: ${setupContext.confirmation.kind} (${setupContext.confirmation.direction}) · on ${setupContext.confirmation.timeframe}`,
+      )
     }
     for (const reason of setupContext.reasons) lines.push(`  - why: ${reason}`)
+
+    // Forge V2 canonical state — the traceable score breakdown. Oracle
+    // reasons OVER these facts; it never re-derives the methodology.
+    if (setupContext.v2) {
+      const v2 = setupContext.v2
+      lines.push('', '## FORGE V2 CANONICAL STATE (deterministic score — traceable contributions)')
+      lines.push(
+        `- Engine: ${v2.engine} v${v2.version} · config v${v2.configVersion}`,
+        `- Score contributions → liquidity +${v2.contributions.liquidity} · sweep +${v2.contributions.sweep} · displacement +${v2.contributions.displacement} · pullback +${v2.contributions.pullback} · confirmation +${v2.contributions.confirmation} · context +${v2.contributions.context}`,
+        `- Final score: ${setupContext.score}/100 · ${setupContext.level.toUpperCase()}`,
+      )
+      if (v2.confluenceBonus) {
+        lines.push(`- Confluence bonus: +${v2.confluenceBonus.points} (${v2.confluenceBonus.family} family)`)
+      }
+      if (v2.cappedByNoConfirmation) lines.push('- No-confirmation cap applied — score clamped until confirmation evidence appears')
+      const ctx = v2.context
+      lines.push(
+        `- Context: structure ${ctx.structure.trend ?? 'n/a'} (${ctx.structure.aligned ? 'aligned' : 'not aligned'}) · opposing liquidity ${ctx.opposingLiquidity.distancePercent === null ? 'n/a' : `${ctx.opposingLiquidity.distancePercent.toFixed(1)}% away (${ctx.opposingLiquidity.side})`} · volatility ${ctx.volatility.elevated ? 'elevated' : 'calm'}`,
+      )
+      if (v2.invalidation) lines.push(`- Invalidation: ${v2.invalidation}`)
+      if (v2.missing.length > 0) lines.push(`- Missing/negative factors: ${v2.missing.join('; ')}`)
+    }
   } else {
     lines.push('', '## SETUP INTELLIGENCE', '- Not available for this window — do not fabricate a setup.')
   }

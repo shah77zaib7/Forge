@@ -119,6 +119,52 @@ function snapshotField(value: unknown): SuppliedLiquiditySnapshot {
   }
 }
 
+function v2Field(value: unknown): SuppliedSetupContext['v2'] {
+  if (typeof value !== 'object' || value === null) return null
+  const v2 = value as Record<string, unknown>
+  const contributionsRaw = (typeof v2.contributions === 'object' && v2.contributions !== null ? v2.contributions : {}) as Record<string, unknown>
+  const num = (n: unknown): number => (isFiniteNumber(n) ? n : 0)
+  const contextRaw = (typeof v2.context === 'object' && v2.context !== null ? v2.context : {}) as Record<string, unknown>
+  const structureRaw = (typeof contextRaw.structure === 'object' && contextRaw.structure !== null ? contextRaw.structure : {}) as Record<string, unknown>
+  const opposingRaw = (typeof contextRaw.opposingLiquidity === 'object' && contextRaw.opposingLiquidity !== null ? contextRaw.opposingLiquidity : {}) as Record<string, unknown>
+  const volatilityRaw = (typeof contextRaw.volatility === 'object' && contextRaw.volatility !== null ? contextRaw.volatility : {}) as Record<string, unknown>
+  const confluence = (typeof v2.confluenceBonus === 'object' && v2.confluenceBonus !== null ? v2.confluenceBonus : null) as Record<string, unknown> | null
+  return {
+    engine: strField(v2.engine, 40) ?? 'forge-v2',
+    version: num(v2.version),
+    contributions: {
+      liquidity: num(contributionsRaw.liquidity),
+      sweep: num(contributionsRaw.sweep),
+      displacement: num(contributionsRaw.displacement),
+      pullback: num(contributionsRaw.pullback),
+      confirmation: num(contributionsRaw.confirmation),
+      context: num(contributionsRaw.context),
+    },
+    missing: Array.isArray(v2.missing) ? v2.missing.filter((r): r is string => typeof r === 'string' && r.length > 0).slice(0, 12) : [],
+    confluenceBonus: confluence ? { family: strField(confluence.family, 40) ?? 'none', points: num(confluence.points) } : null,
+    cappedByNoConfirmation: Boolean(v2.cappedByNoConfirmation),
+    context: {
+      structure: {
+        trend: strField(structureRaw.trend, 40),
+        label: strField(structureRaw.label, 40),
+        aligned: Boolean(structureRaw.aligned),
+      },
+      opposingLiquidity: {
+        side: opposingRaw.side === 'buy' || opposingRaw.side === 'sell' ? opposingRaw.side : null,
+        price: isFiniteNumber(opposingRaw.price) ? opposingRaw.price : null,
+        distancePercent: isFiniteNumber(opposingRaw.distancePercent) ? opposingRaw.distancePercent : null,
+      },
+      volatility: {
+        atrPercent: isFiniteNumber(volatilityRaw.atrPercent) ? volatilityRaw.atrPercent : null,
+        elevated: Boolean(volatilityRaw.elevated),
+      },
+    },
+    invalidation: strField(v2.invalidation, 240),
+    setupRead: strField(v2.setupRead, 1000) ?? '',
+    configVersion: num(v2.configVersion),
+  }
+}
+
 function setupField(value: unknown): SuppliedSetupContext | null {
   if (typeof value !== 'object' || value === null) return null
   const setup = value as Record<string, unknown>
@@ -158,9 +204,11 @@ function setupField(value: unknown): SuppliedSetupContext | null {
       ? {
           kind: strField(confirmation.kind, 40) ?? 'unknown',
           direction: confirmation.direction === 'long' || confirmation.direction === 'short' ? confirmation.direction : null,
+          timeframe: strField(confirmation.timeframe, 8) ?? '1m',
         }
       : null,
     reasons: Array.isArray(setup.reasons) ? setup.reasons.filter((r): r is string => typeof r === 'string' && r.length > 0).slice(0, 12) : [],
+    v2: v2Field(setup.v2),
   }
 }
 

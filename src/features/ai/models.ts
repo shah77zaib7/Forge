@@ -2,9 +2,11 @@ import type { AiModelId, AiModelInfo } from './types'
 
 /**
  * Client model registry — mirrors the server registry in
- * `api/oracle/lib/models.ts`. Availability comes from the server's
+ * `server/oracle/lib/models.ts`. Availability comes from the server's
  * key-free report; this list is only labels + order for the selector.
- * The selected model persists locally so the choice survives reload.
+ * Oracle offers exactly two explicit choices: the deterministic Local
+ * engine and Gemini (the only external AI provider). The selected model
+ * persists locally so the choice survives reload.
  */
 export const AI_MODELS: AiModelInfo[] = [
   {
@@ -15,39 +17,11 @@ export const AI_MODELS: AiModelInfo[] = [
     description: 'Deterministic Forge Liquidity Model — no external API',
   },
   {
-    id: 'claude-opus-5',
-    label: 'Claude Opus 5',
-    provider: 'anthropic',
-    providerLabel: 'Anthropic',
-    description: 'Anthropic frontier — via AgentRouter or direct key',
-  },
-  {
-    id: 'claude-opus-4-8',
-    label: 'Claude Opus 4.8',
-    provider: 'anthropic',
-    providerLabel: 'Anthropic',
-    description: 'Anthropic — via AgentRouter or direct key',
-  },
-  {
-    id: 'gpt-5-6',
-    label: 'GPT-5.6',
-    provider: 'openai',
-    providerLabel: 'OpenAI',
-    description: 'OpenAI — via AgentRouter or direct key',
-  },
-  {
     id: 'gemini',
     label: 'Gemini',
     provider: 'gemini',
     providerLabel: 'Gemini',
     description: 'Google — independent GEMINI_API_KEY',
-  },
-  {
-    id: 'agentrouter',
-    label: 'AgentRouter',
-    provider: 'agentrouter',
-    providerLabel: 'AgentRouter',
-    description: 'Multi-model gateway — single AGENTROUTER_API_KEY',
   },
 ]
 

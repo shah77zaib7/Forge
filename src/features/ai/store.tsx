@@ -21,7 +21,7 @@ interface AiContextValue {
   models: typeof AI_MODELS
   /** Key-free availability, by model id. */
   available: (id: AiModelId) => boolean
-  /** Which gateway would serve the model ('AgentRouter', 'Anthropic'…). */
+  /** Which gateway would serve the model (only 'Gemini' for server models). */
   gatewayOf: (id: AiModelId) => string | null
   /** Key NAMES the model requires (never values). */
   requiresOf: (id: AiModelId) => string[]
@@ -34,11 +34,7 @@ const AiContext = createContext<AiContextValue | null>(null)
 /** Availability map — only local is guaranteed without a server report. */
 const DEFAULT_AVAILABLE: Record<AiModelId, boolean> = {
   local: true,
-  'claude-opus-5': false,
-  'claude-opus-4-8': false,
-  'gpt-5-6': false,
   gemini: false,
-  agentrouter: false,
 }
 
 export function AiProvider({ children }: { children: ReactNode }) {

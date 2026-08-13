@@ -69,13 +69,37 @@ export interface SuppliedSetupContext {
     directionalConsistency: number
   } | null
   retracement: { depthPercent: number; reaction: 'held' | 'broke' | 'none' } | null
-  confirmation: { kind: string; direction: 'long' | 'short' | null } | null
+  confirmation: { kind: string; direction: 'long' | 'short' | null; timeframe: string } | null
   reasons: string[]
+  /** Forge V2 canonical state — traceable score contributions + context. */
+  v2: {
+    engine: string
+    version: number
+    contributions: {
+      liquidity: number
+      sweep: number
+      displacement: number
+      pullback: number
+      confirmation: number
+      context: number
+    }
+    missing: string[]
+    confluenceBonus: { family: string; points: number } | null
+    cappedByNoConfirmation: boolean
+    context: {
+      structure: { trend: string | null; label: string | null; aligned: boolean }
+      opposingLiquidity: { side: 'buy' | 'sell' | null; price: number | null; distancePercent: number | null }
+      volatility: { atrPercent: number | null; elevated: boolean }
+    }
+    invalidation: string | null
+    setupRead: string
+    configVersion: number
+  } | null
 }
 
 /** Everything the frontend sends to POST /api/oracle (action: 'analyze'). */
 export interface OracleApiRequest {
-  /** Workspace model id, e.g. 'claude-opus-5' | 'gemini' | 'local'. */
+  /** Workspace model id, e.g. 'gemini' | 'local'. */
   model: string
   symbol: string
   /** Window id, e.g. '1H'. */

@@ -14,8 +14,8 @@ import type { OracleApiErrorBody, OracleApiRequest, OracleApiResponse } from './
  *   POST /api/oracle { action:'models' } → same availability report
  *   POST /api/oracle { action:'analyze', … } → normalized AI analysis
  *
- * The router internally dispatches to AgentRouter / Anthropic / OpenAI /
- * Gemini. This handler lives OUTSIDE `api/` on purpose: only the thin
+ * The router dispatches to Gemini — the ONLY external AI provider.
+ * This handler lives OUTSIDE `api/` on purpose: only the thin
  * `api/oracle.ts` entry is a Function, so the Hobby plan's 12-function
  * limit is never approached. Provider keys stay in server env vars and
  * never appear in any response.

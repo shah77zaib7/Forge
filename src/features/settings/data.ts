@@ -11,8 +11,6 @@ export interface Option {
 }
 
 export const aiProviders: Option[] = [
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'anthropic', label: 'Anthropic' },
   { value: 'gemini', label: 'Google Gemini' },
   { value: 'local', label: 'Local model' },
 ]

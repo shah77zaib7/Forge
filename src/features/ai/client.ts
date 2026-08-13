@@ -5,9 +5,10 @@ import type { OracleAnalysis, OracleApiRequest, OracleApiResponse, OracleRequest
  * Serverless Function (POST /api/oracle with { action: 'analyze' }).
  * Typed failures surface honestly (network / rate_limit / not_configured /
  * provider_error / bad_model_output…). `localAnalysis` is the deterministic
- * Local engine fallback: it produces the SAME normalized analysis shape from
- * the supplied facts, so the app is fully functional with zero keys while
- * the server models remain honest unavailable states until configured.
+ * Local engine — an EXPLICIT model choice that produces the SAME normalized
+ * analysis shape from the supplied facts, so the app is fully functional
+ * with zero keys. The Local engine is never substituted for a failed server
+ * model: a Gemini failure is surfaced as a typed error, not a fake answer.
  */
 
 export class OracleClientError extends Error {

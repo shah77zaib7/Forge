@@ -1,22 +1,14 @@
 /**
  * Lightweight request-cost estimation. Rough USD-per-1M-token rates so the
  * request metadata can show an estimated cost — this is a coarse estimate
- * for a single-user app, NOT billing. Tune the table as providers change
- * their pricing; rates for unreleased future models are best-effort guesses
- * and are labeled as such. Keys never appear here.
+ * for a single-user app, NOT billing. Gemini is the only external AI
+ * provider, so this table holds its rate only. Keys never appear here.
  */
 
 /** $ per 1M tokens, keyed by model id (the workspace id, not gateway id). */
 const RATES: Record<string, { input: number; output: number }> = {
-  // Opus-class frontier models — estimates, verify against current pricing.
-  'claude-opus-5': { input: 15, output: 75 },
-  'claude-opus-4-8': { input: 15, output: 75 },
-  // GPT-5.6 — estimate; GPT-5-class pricing.
-  'gpt-5-6': { input: 2.5, output: 10 },
   // Gemini 3 class (default gemini-3.6-flash) — estimate.
   gemini: { input: 1.25, output: 10 },
-  // AgentRouter gateway model id is dynamic — apply the gateway default.
-  agentrouter: { input: 2, output: 10 },
 }
 
 /** Fallback for unknown/unlisted model ids. */

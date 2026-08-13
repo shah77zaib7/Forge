@@ -1,5 +1,6 @@
 import { AccountSection } from './components/account-section'
 import { AppearanceSection } from './components/appearance-section'
+import { ForgeV2Section } from './components/forge-v2-section'
 import { MarketPreferencesSection } from './components/market-preferences-section'
 import { NotificationsSection } from './components/notifications-section'
 import { OraclePreferencesSection } from './components/oracle-preferences-section'
@@ -25,6 +26,7 @@ export function SettingsPage() {
       <div className="space-y-6">
         <ProfileSection />
         <AppearanceSection />
+        <ForgeV2Section />
         <MarketPreferencesSection />
         <OraclePreferencesSection />
         <NotificationsSection />
